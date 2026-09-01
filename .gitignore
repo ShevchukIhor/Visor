@@ -1,0 +1,24 @@
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+*.iml
+.idea/
+.metadata
+
+# Signing secrets — never commit
+keystore/
+*.keystore
+*.jks
+android/key.properties
+
+# Environment / credentials — never commit
+.env
+
+# Stale package-path stub (active package is com.visor.app)
+android/app/src/main/kotlin/com/visor/visor/
+
+# OS
+.DS_Store
