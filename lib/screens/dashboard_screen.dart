@@ -7,6 +7,7 @@ import 'analytics_screen.dart';
 import 'exercises_screen.dart';
 import 'reminder_screen.dart';
 import 'setup_screen.dart';
+import 'about_screen.dart';
 
 /// Home dashboard: streak, today, best, and navigation to training modes.
 class DashboardScreen extends StatefulWidget {
@@ -160,6 +161,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   MaterialPageRoute(builder: (_) => const AnalyticsScreen()),
                 ),
               ),
+              _menuButton(
+                icon: Icons.info_outline,
+                title: 'Support Visor',
+                subtitle: 'About this app and tipping',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AboutScreen()),
+                ),
+              ),
               const Spacer(),
               Center(
                 child: Text(
@@ -167,6 +177,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   style: TextStyle(
                       color: VisorTheme.textDim.withOpacity(0.7),
                       fontSize: 12),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Center(
+                child: Text(
+                  'Version 0.1.0',
+                  style: TextStyle(
+                      color: VisorTheme.textDim.withOpacity(0.5),
+                      fontSize: 11),
                 ),
               ),
             ],
