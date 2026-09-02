@@ -3,8 +3,9 @@ import "package:flutter/services.dart";
 
 import "../core/theme/visor_theme.dart";
 
-/// About / Support screen: what Visor does, the publisher Solana address
-/// (copyable), and a note that the app is free. Fits on one screen, no scroll.
+/// About / Support screen: what Visor does, how it works, privacy, a a
+/// medical disclaimer, and the publisher Solana address (copyable).
+/// Wrapped in SingleChildScrollView so it is safe on small screens.
 class AboutScreen extends StatefulWidget {
   const AboutScreen({super.key});
 
@@ -14,7 +15,7 @@ class AboutScreen extends StatefulWidget {
 
 class _AboutScreenState extends State<AboutScreen> {
   static const String _solAddress =
-      "H2gnCCWcAtjgRYVPdCLv37zFdPu4TsdlwfMzvedKXW5w";
+      "H2gnCCWcAtjgRYVPdCLv37zFdPu4TsdLwfMzvedKXW5w";
   bool _copied = false;
 
   Future<void> _copy() async {
@@ -36,20 +37,45 @@ class _AboutScreenState extends State<AboutScreen> {
         title: const Text("Support Visor"),
       ),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
                 "Visor trains your visual cortex with Gabor-patch games and "
-                "guided eye exercises. No paywall, no ads, no accounts — all "
-                "data stays on your device.",
+                "guided eye exercises — the same stimuli neuroscience uses "
+                "to study vision. Regular short sessions can ease screen "
+                "fatigue, sharpen focus, and loosen eye strain from long "
+                "near-work.",
                 style: TextStyle(color: VisorTheme.text, fontSize: 15, height: 1.4),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 14),
               const Text(
-                "If Visor helped your eyes, a tip is appreciated — never required.",
+                "Each card differs by a single controlled parameter — "
+                "orientation, frequency, or phase — so your brain learns to "
+                "tell real visual detail apart, not just guess at noise.",
+                style: TextStyle(color: VisorTheme.text, fontSize: 14, height: 1.35),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                "Private by design: no accounts, no ads, no trackers, no "
+                "telemetry. Every session is stored locally on your device "
+                "and never leaves it.",
+                style: TextStyle(color: VisorTheme.text, fontSize: 14, height: 1.35),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                "Visor is a training tool, not a medical device. It does not "
+                "diagnose or treat any eye condition. If you experience "
+                "persistent pain, double vision, or sudden vision changes, "
+                "see an eye-care professional.",
+                style: TextStyle(color: VisorTheme.danger, fontSize: 14, height: 1.35),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                "If Visor helped your eyes, a tip is appreciated — never "
+                "required.",
                 style: TextStyle(color: VisorTheme.textDim, fontSize: 13),
               ),
               const SizedBox(height: 20),
