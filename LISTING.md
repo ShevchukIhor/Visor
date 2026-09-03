@@ -4,12 +4,12 @@
 ## App Name (назва)
 Visor
 
-## Short Description (короткий опис, <= 30 символів)
+## Short Description / Subtitle (<= 50 символів, у форматі порталу)
 Vision training for sharper eyes
 
-(27 символів — в межах ліміту 30)
+(27 символів — в межах ліміту)
 
-## Long Description (довгий опис)
+## Long Description
 Visor trains your visual cortex with Gabor-patch games and guided eye
 exercises — no paywall, no gimmicks.
 
@@ -40,14 +40,39 @@ never after a completed session. Alarms survive reboot.
 Visor is built for Solana Seeker (Android), ARM64, and works entirely
 offline. No ads, no trackers, no accounts required.
 
+## Publisher Portal — full form values
+| Field | Value |
+|-------|-------|
+| dApp Name (<= 25) | Visor |
+| Package Name | com.visor.app |
+| Subtitle (<= 50) | Vision training for sharper eyes |
+| Description | (see Long Description above) |
+| dApp Icon 512x512 | assets/icon_512.png |
+| Banner 1200x600 | visor-assets/banner_1200x600.png |
+| Graphic 1200x1200 | visor-assets/graphic_1200x1200.png |
+| Preview images (min 4, 1080x1920 portrait) | screenshot from Seeker (self-capture) |
+| Headline (<= 50) | Train your eyes, not just your streak |
+| Languages | English |
+| Countries | All countries |
+| App Website | https://github.com/env5150/visor |
+| Contact Email | env5150@proton.me |
+| Support Email | env5150@proton.me |
+| Terms of Use | https://github.com/env5150/visor/blob/main/TERMS.md |
+| Privacy Policy | https://github.com/env5150/visor/blob/main/PRIVACY.md |
+
 ## Category (категорія у dApp Store)
 Lifestyle
 
 ## Tags / keywords (для пошуку)
 vision training, eye exercises, gabor, focus, eye strain, screen fatigue
 
-## App Icon
-512x512 PNG (assets/icon_512.png)
+## Screenshots (1080px+, однакової орієнтації)
+Зняти зі Seeker через `adb shell screencap -p` (портрет 1200x2670, потім
+зменшити до 1080x2400 для однакової пропорції).
 
-## Screenshots
-1080px+, однакової орієнтації (зняти зі Seeker через adb screencap)
+## Media specs (алише для довідки)
+- Icon: 512x512px (required)
+- Banner: 1200x600px (required)
+- Graphic: 1200x1200px
+- Preview images: jpg/png/webp, до 3MB, 1080x1920 (portrait) or 1920x1080 (landscape)
+- Preview video: mp4, до 30MB, 720px+ (1080p recommended)
