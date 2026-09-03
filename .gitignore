@@ -24,3 +24,6 @@ android/app/src/main/kotlin/com/visor/visor/
 .DS_Store
 # Private local notes — not published
 TODO.md
+
+# Draft screenshots — not published
+assets/previews/
