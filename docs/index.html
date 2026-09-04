@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Visor — Vision Training for Solana Seeker</title>
+<meta name="description" content="Visor is a free, open-source vision-training dApp for Solana Seeker. Gabor-patch games and guided eye exercises, fully on-device.">
+<style>
+  :root {
+    --bg: #0b0b0f;
+    --bg2: #101828;
+    --blue: #2563eb;
+    --blue-l: #60a4fa;
+    --cyan: #22d3ee;
+    --text: #e8e8ee;
+    --dim: #80808f;
+    --surface: #16161c;
+    --border: #23232d;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 820px; margin: 0 auto; padding: 0 20px; }
+
+  header {
+    padding: 40px 0 20px;
+    background: linear-gradient(180deg, var(--bg2), var(--bg));
+  }
+  .hero {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+  .logo {
+    width: 96px; height: 96px; border-radius: 24px;
+    background: var(--blue);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .logo svg { width: 56px; height: 56px; }
+  .brand h1 {
+    font-size: 42px; font-weight: 800; letter-spacing: 4px;
+  }
+  .brand .sub { color: var(--dim); font-size: 18px; }
+  .brand .tag { color: var(--blue-l); margin-top: 6px; font-size: 15px; }
+
+  section { padding: 36px 0; }
+  h2 {
+    font-size: 24px; font-weight: 700; margin-bottom: 14px;
+    color: var(--text);
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 8px;
+  }
+  p { color: var(--dim); margin-bottom: 12px; font-size: 16px; }
+  a { color: var(--blue-l); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .features { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .feature {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px;
+  }
+  .feature h3 { font-size: 17px; margin-bottom: 8px; color: var(--text); }
+  .feature p { font-size: 14px; margin: 0; }
+
+  .cta {
+    display: inline-block;
+    background: var(--blue);
+    color: #fff;
+    font-weight: 700;
+    padding: 14px 28px;
+    border-radius: 12px;
+    margin-top: 8px;
+  }
+  .cta:hover { background: #1d4ed8; text-decoration: none; }
+
+  .muted { font-size: 13px; color: var(--dim); }
+  footer {
+    margin-top: 40px;
+    padding: 28px 0 48px;
+    border-top: 1px solid var(--border);
+    color: var(--dim);
+    font-size: 13px;
+  }
+  footer a { color: var(--dim); }
+  @media (max-width: 640px) {
+    .features { grid-template-columns: 1fr; }
+    .brand h1 { font-size: 32px; }
+    .hero { gap: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap hero">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="12" r="10" stroke="#fff" stroke-width="1.6" fill="none"/>
+        <path d="M7 10 L12 15 L17 10" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div class="brand">
+      <h1>VISOR</h1>
+      <div class="sub">vision training</div>
+      <div class="tag">Train your visual cortex. Sharper eyes, daily.</div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section>
+    <h2>What is Visor?</h2>
+    <p>
+      Visor is a free, open-source vision-training dApp built for <strong>Solana Seeker</strong>.
+      It trains your visual cortex with Gabor-patch games and guided eye exercises — the
+      same stimuli neuroscience uses to study vision. No paywall, no ads, no accounts.
+      Everything runs on-device.
+    </p>
+  </section>
+
+  <section>
+    <h2>Features</h2>
+    <div class="features">
+      <div class="feature">
+        <h3>Gabor Patch Game</h3>
+        <p>Find the matching pattern in a 3&times;3 to 6&times;6 grid. Each card differs by a
+        single controlled parameter — orientation, frequency, or phase.</p>
+      </div>
+      <div class="feature">
+        <h3>Four Difficulty Levels</h3>
+        <p>From Easy (3&times;3) to Expert (6&times;6), each level tightens the visual
+        discrimination threshold, following how vision research works.</p>
+      </div>
+      <div class="feature">
+        <h3>Guided Eye Exercises</h3>
+        <p>Convergence, near-far cycles, focus shifting, saccadic jumps, smooth pursuit,
+        figure-8 tracking, peripheral awareness, and 3D relaxation orbs.</p>
+      </div>
+      <div class="feature">
+        <h3>Private by Design</h3>
+        <p>No accounts, no trackers, no telemetry. Every session is stored locally on your
+        device and never leaves it.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Download</h2>
+    <p>Installed from the Solana dApp Store, or grab the signed APK directly:</p>
+    <a class="cta" href="https://github.com/env5150/visor/releases/download/v0.1.0/visor-0.1.0.apk">Download APK</a>
+    <p class="muted" style="margin-top:12px;">Version 0.1.0 &middot; Android (arm64) &middot; ~50 MB</p>
+  </section>
+
+  <section>
+    <h2>About the builder</h2>
+    <p>
+      Visor is built by an independent developer exploring the Solana Mobile ecosystem.
+      This is an early-stage project — feedback and contributions are welcome.
+    </p>
+    <p>
+      <a href="https://github.com/env5150/visor">View the source on GitHub</a>
+    </p>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>
+      &copy; 2026 env5150 &middot;
+      <a href="https://github.com/env5150/visor/blob/main/TERMS.md">Terms of Use</a> &middot;
+      <a href="https://github.com/env5150/visor/blob/main/PRIVACY.md">Privacy Policy</a> &middot;
+      <a href="mailto:env5150@proton.me">Contact</a>
+    </p>
+    <p class="muted">Not a medical device. For persistent eye symptoms, consult an eye-care professional.</p>
+  </div>
+</footer>
+
+</body>
+</html>
