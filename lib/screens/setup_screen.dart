@@ -44,6 +44,12 @@ class _SetupScreenState extends State<SetupScreen> {
               const _SectionLabel('Stripe mode'),
               const SizedBox(height: 8),
               _stripeSwitch(),
+              const SizedBox(height: 12),
+              const Text(
+                'Tip: for best results set brightness so the bright and dark '
+                'stripes are clearly distinct \u2014 no higher than comfortable.',
+                style: TextStyle(color: VisorTheme.textDim, fontSize: 12.5, height: 1.4),
+              ),
               const Spacer(),
               SizedBox(
                 width: double.infinity,
