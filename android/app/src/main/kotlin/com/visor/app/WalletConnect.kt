@@ -104,7 +104,12 @@ object WalletConnect {
   private const val RECIPIENT = "H2gnCCWcAtjgRYVPdCLv37zFdPu4TsdLwfMzvedKXW5w"
   private const val SKR_MINT = "SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3"
   private const val SKR_DECIMALS = 6
-  private const val RPC = "https://api.mainnet-beta.solana.com"
+  // Public mainnet RPC endpoints, tried in order. The official one
+  // rate-limits anonymous mobile traffic (429/403), so keep a fallback.
+  private val RPCS = listOf(
+    "https://api.mainnet-beta.solana.com",
+    "https://solana-rpc.publicnode.com",
+  )
 
   private const val MIN_HUMAN = 0.01
   private const val SOL_MAX = 1.0
@@ -255,18 +260,37 @@ object WalletConnect {
   }
 
   private fun rpcCall(body: String): JSONObject? {
+    for (url in RPCS) {
+      val resp = rpcPost(url, body)
+      if (resp != null) return resp
+    }
+    return null
+  }
+
+  private fun rpcPost(url: String, body: String): JSONObject? {
     return try {
-      val conn = URL(RPC).openConnection() as HttpURLConnection
+      val conn = URL(url).openConnection() as HttpURLConnection
       conn.requestMethod = "POST"
       conn.doOutput = true
+      conn.connectTimeout = 15000
+      conn.readTimeout = 15000
       conn.setRequestProperty("Content-Type", "application/json")
       conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
       val code = conn.responseCode
-      val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-      val text = stream.bufferedReader().use { it.readText() }
-      JSONObject(text)
+      if (code !in 200..299) {
+        Log.w(TAG, "rpc $url -> HTTP $code")
+        return null
+      }
+      val text = conn.inputStream.bufferedReader().use { it.readText() }
+      val json = JSONObject(text)
+      // A JSON-RPC error payload ({"error":{...}}) is not a usable blockhash.
+      if (json.has("error")) {
+        Log.w(TAG, "rpc $url -> ${json.optString("error")}")
+        return null
+      }
+      json
     } catch (e: Exception) {
-      Log.e(TAG, "rpc failed", e)
+      Log.e(TAG, "rpc $url failed", e)
       null
     }
   }

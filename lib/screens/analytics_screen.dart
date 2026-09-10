@@ -135,9 +135,15 @@ class _ScoreChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pts = sessions
-        .map((s) => _ChartPoint(s.score, s.startedAt))
+        .map((s) => _ChartPoint(s.score, s.startedAt, s.id))
         .toList()
-      ..sort((a, b) => a.time.compareTo(b.time));
+      // Deterministic order: time, then id. A plain time sort is unstable,
+      // so two sessions recorded in the same millisecond could swap and
+      // reshape the line (the 100-peak would jump off the middle).
+      ..sort((a, b) {
+        final c = a.time.compareTo(b.time);
+        return c != 0 ? c : a.id.compareTo(b.id);
+      });
     return CustomPaint(painter: _ChartPainter(points: pts));
   }
 }
@@ -145,7 +151,8 @@ class _ScoreChart extends StatelessWidget {
 class _ChartPoint {
   final double score;
   final DateTime time;
-  const _ChartPoint(this.score, this.time);
+  final int id;
+  const _ChartPoint(this.score, this.time, this.id);
 }
 
 class _ChartPainter extends CustomPainter {
@@ -167,6 +174,14 @@ class _ChartPainter extends CustomPainter {
     final nice = [1.0, 2.0, 2.5, 5.0, 10.0]
         .firstWhere((c) => n <= c, orElse: () => 10.0);
     return nice * mag;
+  }
+
+  /// Snap a label value to a clean number so gridlines/labels are round
+  /// (e.g. yMax=100 -> "0/50/100", not "0/55/100").
+  static double _niceLabel(double v, double yMax) {
+    final f = v / yMax;
+    final snapped = (f * 2.0).roundToDouble() / 2.0;
+    return snapped * yMax;
   }
 
   static String _date(DateTime d) =>
@@ -208,7 +223,7 @@ class _ChartPainter extends CustomPainter {
       _label(
           canvas,
           tp,
-          (f * yMax).toStringAsFixed(0),
+          _niceLabel(f * yMax, yMax).toStringAsFixed(0),
           dimStyle,
           Offset(padL - 28, y - 7));
     }
