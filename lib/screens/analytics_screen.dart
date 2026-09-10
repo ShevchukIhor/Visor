@@ -51,12 +51,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   children: [
                     const Padding(
                       padding: EdgeInsets.all(12),
-                      child: Text('Score trend',
+                      child: Text(
+                          'Score trend',
                           style: TextStyle(
                               color: VisorTheme.textDim, fontSize: 13)),
                     ),
                     SizedBox(
-                      height: 180,
+                      height: 200,
                       child: Padding(
                         padding:
                             const EdgeInsets.symmetric(horizontal: 16),
@@ -64,7 +65,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    const Text('History',
+                    const Text(
+                        'History',
                         style: TextStyle(
                             color: VisorTheme.textDim, fontSize: 13)),
                     Expanded(child: _historyList()),
@@ -77,7 +79,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     return ListView.separated(
       padding: const EdgeInsets.all(16),
       itemCount: _sessions.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 6),
+      separatorBuilder: (_, _) => const SizedBox(height: 6),
       itemBuilder: (ctx, i) {
         final s = _sessions[i];
         final dt = s.startedAt;
@@ -97,7 +99,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('${s.grid}×${s.grid} · ${s.pattern} · ${s.durationS ~/ 60} min',
+                    Text(
+                        '${s.grid}\u00D7${s.grid} \u00B7 ${s.pattern} \u00B7 ${s.durationS ~/ 60} min',
                         style: const TextStyle(
                             color: VisorTheme.text, fontSize: 14)),
                     Text(date,
@@ -131,44 +134,123 @@ class _ScoreChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _ChartPainter(
-        scores: sessions.reversed
-            .map((s) => s.score)
-            .toList(),
-      ),
-    );
+    final pts = sessions
+        .map((s) => _ChartPoint(s.score, s.startedAt))
+        .toList()
+      ..sort((a, b) => a.time.compareTo(b.time));
+    return CustomPaint(painter: _ChartPainter(points: pts));
   }
 }
 
+class _ChartPoint {
+  final double score;
+  final DateTime time;
+  const _ChartPoint(this.score, this.time);
+}
+
 class _ChartPainter extends CustomPainter {
-  final List<double> scores;
-  _ChartPainter({required this.scores});
+  final List<_ChartPoint> points;
+  _ChartPainter({required this.points});
+
+  static const double padL = 34;
+  static const double padR = 14;
+  static const double padT = 22;
+  static const double padB = 20;
+
+  /// Round a raw max up to a clean ceiling (0-based scale so height is
+  /// proportional to the real value, not to a min..max window).
+  static double niceCeil(double v) {
+    if (v <= 0) return 10;
+    final exp = (math.log(v) / math.log(10)).floorToDouble();
+    final mag = math.pow(10.0, exp).toDouble();
+    final n = v / mag;
+    final nice = [1.0, 2.0, 2.5, 5.0, 10.0]
+        .firstWhere((c) => n <= c, orElse: () => 10.0);
+    return nice * mag;
+  }
+
+  static String _date(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}';
+
+  void _label(
+      Canvas canvas,
+      TextPainter tp,
+      String text,
+      TextStyle style,
+      Offset pos) {
+    tp.text = TextSpan(text: text, style: style);
+    tp.layout(maxWidth: double.infinity);
+    tp.paint(canvas, pos);
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (scores.isEmpty) return;
-    const pad = 8.0;
-    final maxScore = scores.reduce(math.max).clamp(1.0, double.infinity);
-    final minScore = scores.reduce(math.min);
-    final range = math.max(maxScore - minScore, 1.0);
-    final denom = math.max(scores.length - 1, 1);
+    if (points.isEmpty) return;
+    final w = size.width;
+    final h = size.height;
+    final plotW = math.max(w - padL - padR, 1);
+    final plotH = math.max(h - padT - padB, 1);
+    final baseY = padT + plotH;
 
-    final pts = <Offset>[];
-    for (var i = 0; i < scores.length; i++) {
-      final x = pad + (size.width - 2 * pad) * (i / denom);
-      final y = size.height -
-          pad -
-          (size.height - 2 * pad) * ((scores[i] - minScore) / range * 0.9);
-      pts.add(Offset(x, y));
+    final maxScore = points.reduce((a, b) => a.score > b.score ? a : b).score;
+    final yMax = niceCeil(maxScore);
+
+    final tp = TextPainter(textDirection: TextDirection.ltr);
+    final dimStyle = TextStyle(color: VisorTheme.textDim, fontSize: 10);
+
+    // grid: 0 / 50% / 100% with numeric Y labels.
+    final grid = Paint()
+      ..color = VisorTheme.textDim.withValues(alpha: 0.25)
+      ..strokeWidth = 1;
+    for (final f in [0.0, 0.5, 1.0]) {
+      final y = padT + plotH * (1 - f);
+      canvas.drawLine(Offset(padL, y), Offset(padL + plotW, y), grid);
+      _label(
+          canvas,
+          tp,
+          (f * yMax).toStringAsFixed(0),
+          dimStyle,
+          Offset(padL - 28, y - 7));
     }
+
+    final n = points.length;
+    Offset xy(int i) {
+      final x = padL + (n <= 1 ? plotW / 2 : plotW * (i / (n - 1)));
+      final y = baseY - (points[i].score / yMax) * plotH;
+      return Offset(x, y);
+    }
+
+    // x-axis date labels (first / last).
+    if (n >= 2) {
+      _label(canvas, tp, _date(points.first.time), dimStyle,
+          Offset(padL, baseY + 6));
+      _label(canvas, tp, _date(points.last.time), dimStyle,
+          Offset(padL + plotW - 28, baseY + 6));
+    }
+
+    if (n == 1) {
+      final p = xy(0);
+      canvas.drawCircle(p, 4, Paint()..color = VisorTheme.primary);
+      _label(
+          canvas,
+          tp,
+          points.first.score.toStringAsFixed(0),
+          TextStyle(
+              color: VisorTheme.text,
+              fontSize: 12,
+              fontWeight: FontWeight.bold),
+          Offset(p.dx - 12, p.dy - 22));
+      return;
+    }
+
+    final pts = [for (var i = 0; i < n; i++) xy(i)];
 
     final line = Paint()
       ..color = VisorTheme.primary
       ..strokeWidth = 2.5
       ..style = PaintingStyle.stroke;
     final fill = Paint()
-      ..color = VisorTheme.primary.withOpacity(0.15)
+      ..color = VisorTheme.primary.withValues(alpha: 0.15)
       ..style = PaintingStyle.fill;
     final dot = Paint()..color = VisorTheme.primary;
 
@@ -177,17 +259,25 @@ class _ChartPainter extends CustomPainter {
       path.lineTo(p.dx, p.dy);
     }
     final fillPath = Path.from(path)
-      ..lineTo(pts.last.dx, size.height - pad)
-      ..lineTo(pts.first.dx, size.height - pad)
+      ..lineTo(pts.last.dx, baseY)
+      ..lineTo(pts.first.dx, baseY)
       ..close();
     canvas.drawPath(fillPath, fill);
     canvas.drawPath(path, line);
     for (final p in pts) {
       canvas.drawCircle(p, 3, dot);
     }
+
+    final lp = pts.last;
+    _label(
+        canvas,
+        tp,
+        points.last.score.toStringAsFixed(0),
+        TextStyle(
+            color: VisorTheme.text, fontSize: 12, fontWeight: FontWeight.bold),
+        Offset(lp.dx - 12, lp.dy - 20 < 4 ? 4 : lp.dy - 20));
   }
 
   @override
-  bool shouldRepaint(covariant _ChartPainter old) =>
-      old.scores != scores;
+  bool shouldRepaint(covariant _ChartPainter old) => old.points != points;
 }

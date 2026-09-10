@@ -59,6 +59,11 @@ class MainActivity : FlutterFragmentActivity() {
       .setMethodCallHandler { call, result ->
         when (call.method) {
           "authorizeWallet" -> WalletConnect.authorize(this, result)
+          "sendTip" -> {
+            val token = (call.argument<String>("token")) ?: "SKR"
+            val amount = (call.argument<Number>("amount"))?.toDouble() ?: 0.0
+            WalletConnect.sendTip(this, token, amount, result)
+          }
           else -> result.notImplemented()
         }
       }

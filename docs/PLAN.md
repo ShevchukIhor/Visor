@@ -120,6 +120,8 @@ with at least one session.
 - Weighted scoring, streak, best, SQLite persistence.
 - 8 exercises with trajectories.
 - Seed Vault wallet (optional SOL/SKR tipping).
+- Analytics chart (0-based scale, grid, date labels, 1-point handling).
+- Tip/donate flow (SOL/SKR) wired through MWA signAndSendTransactions.
 
 ### 4.1 Unit tests for the generator core
 The generator is clean and dependency-free but has zero tests. Add `test/`

@@ -46,4 +46,25 @@ class WalletAuthService {
     }
     return s.length >= 32 && s.length <= 44;
   }
+
+  /// Send a tip/donation from the (pre-authorized) Seed Vault wallet.
+  ///
+  /// [token] is "SOL" or "SKR"; [amountHuman] in human units.
+  /// Returns null on success, or a human-readable error string on failure.
+  Future<String?> sendTip({required String token, required double amountHuman}) async {
+    try {
+      await _channel.invokeMethod('sendTip', {
+        'token': token,
+        'amount': amountHuman,
+      });
+      return null;
+    } on PlatformException catch (e) {
+      final msg = e.message == null || e.message!.isEmpty
+          ? (e.code == 'NO_WALLET' ? 'No compatible wallet found' : 'Tip failed')
+          : e.message!;
+      return msg;
+    } catch (e) {
+      return e.toString();
+    }
+  }
 }
