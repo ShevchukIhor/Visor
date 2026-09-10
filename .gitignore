@@ -27,3 +27,19 @@ TODO.md
 
 # Draft screenshots — not published
 assets/previews/
+
+# Build / deploy staging & scratch — not published
+.cf-site/
+.cf_deploy.py
+visor-landing/
+visor_patch_setup.py
+build_release.log
+local_build_test.log
+rebuild2.log
+# Generated banner experiments (the published banners live in visor-assets/banner_*, graphic_*)
+visor-assets/banner_A*.png
+visor-assets/banner_B*.png
+
+
+# Unused CI draft (native CF GitHub App, not Actions)
+.github/
