@@ -25,7 +25,7 @@ object WalletConnect {
 
   private val walletAdapter = MobileWalletAdapter(
     connectionIdentity = ConnectionIdentity(
-      identityUri = Uri.parse("https://visor.app"),
+      identityUri = Uri.parse("https://visor-mobile.pages.dev/"),
       iconUri = Uri.parse("icon.png"),
       identityName = "Visor — Vision Training",
     ),
