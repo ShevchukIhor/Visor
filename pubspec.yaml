@@ -10,7 +10,6 @@ dependencies:
   sqflite: ^2.3.3+1
   path: ^1.9.0
   cupertino_icons: ^1.0.8
-  solana: ^0.31.2+1
 dev_dependencies:
   flutter_test:
     sdk: flutter

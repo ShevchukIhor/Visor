@@ -56,14 +56,13 @@ android {
 
 kotlin {
     compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-        freeCompilerArgs.add("-Xskip-prerelease-check")
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
 }
 
 dependencies {
     // Solana Mobile Wallet Adapter (Kotlin) for Seed Vault connect.
-    // agp9 build is built for AGP 9; plain 2.2.0 pulls androidx.core 1.19 \u2192 compileSdk 37.
+    // agp9 build is built for AGP 9; plain 2.2.0 pulls androidx.core 1.19 → compileSdk 37.
     implementation("com.solanamobile:mobile-wallet-adapter-clientlib-ktx:2.2.0-agp9-beta1")
 }
 

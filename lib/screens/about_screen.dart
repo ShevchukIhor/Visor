@@ -4,20 +4,33 @@ import 'package:flutter/services.dart';
 import '../core/theme/visor_theme.dart';
 import '../core/wallet/wallet_auth.dart';
 
-/// About / Support screen: what Visor does, copy address, donate via Seed Vault.
-class AboutScreen extends StatelessWidget {
+/// About / Support screen: what Visor does, how it works, privacy, a
+/// medical disclaimer, and the publisher Solana address (copyable).
+/// Tip/donate: a button under the address opens a sheet with token choice
+/// (SKR default), preset amounts, a custom field, and a thank-you screen.
+class AboutScreen extends StatefulWidget {
   const AboutScreen({super.key});
 
-  void _openTip(BuildContext context) {
-    showTipSheet(context);
+  @override
+  State<AboutScreen> createState() => _AboutScreenState();
+}
+
+class _AboutScreenState extends State<AboutScreen> {
+  static const String _solAddress =
+      "H2gnCCWcAtjgRYVPdCLv37zFdPu4TsdLwfMzvedKXW5w";
+  bool _copied = false;
+
+  Future<void> _copy() async {
+    await Clipboard.setData(const ClipboardData(text: _solAddress));
+    if (!mounted) return;
+    setState(() => _copied = true);
+    Future.delayed(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _copied = false);
+    });
   }
 
-  void _copy(BuildContext context) {
-    const address = 'H2gnCCWcAtjgRYVPdCLv37zFdPu4TsdLwfMzvedKXW5w';
-    Clipboard.setData(const ClipboardData(text: address));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Address copied'), duration: Duration(seconds: 2)),
-    );
+  void _openTip() {
+    showTipSheet(context);
   }
 
   @override
@@ -27,7 +40,7 @@ class AboutScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: VisorTheme.bg,
         foregroundColor: VisorTheme.text,
-        title: const Text('About Visor'),
+        title: const Text("Support Visor"),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -36,71 +49,110 @@ class AboutScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Visor trains your visual cortex with Gabor-patch games and '
-                'eye exercises — no ads, no tracking, no subscription.',
-                style: TextStyle(color: VisorTheme.textDim, fontSize: 14, height: 1.5),
+                "Visor trains your visual cortex with Gabor-patch games and "
+                "guided eye exercises — the same stimuli neuroscience uses "
+                "to study vision. Regular short sessions can ease screen "
+                "fatigue, sharpen focus, and loosen eye strain from long "
+                "near-work.",
+                style: TextStyle(color: VisorTheme.text, fontSize: 15, height: 1.4),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 14),
               const Text(
-                'Donate address (SOL / SKR mainnet)',
-                style: TextStyle(
-                  color: VisorTheme.text,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
+                "Each card differs by a single controlled parameter — "
+                "orientation, frequency, or phase — so your brain learns to "
+                "tell real visual detail apart, not just guess at noise.",
+                style: TextStyle(color: VisorTheme.text, fontSize: 14, height: 1.35),
               ),
-              const SizedBox(height: 8),
-              SelectableText(
-                'H2gnCCWcAtjgRYVPdCLv37zFdPu4TsdLwfMzvedKXW5w',
-                style: const TextStyle(
-                  color: VisorTheme.primary,
-                  fontSize: 14,
-                  fontFamily: 'monospace',
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: () => _openTip(context),
-                      icon: const Icon(Icons.volunteer_activism, size: 18),
-                      label: const Text('Send a tip'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  TextButton(
-                    onPressed: () => _copy(context),
-                    child: const Text('Copy address', style: TextStyle(fontSize: 13)),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Opens your Seed Vault wallet — the amount and token are '
-                'yours to set. Nothing leaves your wallet unless you confirm.',
-                style: TextStyle(color: VisorTheme.textDim, fontSize: 12, height: 1.3),
-              ),
-              const SizedBox(height: 32),
-              const Divider(),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
               const Text(
-                'Visor — Vision Training & Eye Exercises',
-                style: TextStyle(
-                  color: VisorTheme.text,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
+                "Private by design: no accounts, no ads, no trackers, no "
+                "telemetry. Every session is stored locally on your device "
+                "and never leaves it.",
+                style: TextStyle(color: VisorTheme.text, fontSize: 14, height: 1.35),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 14),
               const Text(
-                'Built with Flutter • Solana Mobile Wallet Adapter',
+                "Visor is a training tool, not a medical device. It does not "
+                "diagnose or treat any eye condition. If you experience "
+                "persistent pain, double vision, or sudden vision changes, "
+                "see an eye-care professional.",
+                style: TextStyle(color: VisorTheme.danger, fontSize: 14, height: 1.35),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                "If Visor helped your eyes, a tip is appreciated — never "
+                "required.",
                 style: TextStyle(color: VisorTheme.textDim, fontSize: 13),
               ),
-              const SizedBox(height: 8),
-              const Text(
-                'Open source • Privacy first • No analytics',
-                style: TextStyle(color: VisorTheme.textDim, fontSize: 12),
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: VisorTheme.surface,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Solana address",
+                      style: TextStyle(
+                        color: VisorTheme.textDim,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(Icons.account_balance_wallet,
+                            color: VisorTheme.primary, size: 20),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            _solAddress,
+                            style: const TextStyle(
+                              color: VisorTheme.text,
+                              fontFamily: "monospace",
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: _openTip,
+                            icon: const Icon(Icons.volunteer_activism, size: 18),
+                            label: const Text("Send a tip"),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        TextButton(
+                          onPressed: _copy,
+                          child: Text(
+                            _copied ? "Copied" : "Copy address",
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      "Opens your Seed Vault wallet — the amount and token are "
+                      "yours to set. Nothing leaves your wallet unless you "
+                      "confirm.",
+                      style: TextStyle(
+                        color: VisorTheme.textDim,
+                        fontSize: 12,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -110,16 +162,8 @@ class AboutScreen extends StatelessWidget {
   }
 }
 
-/// Bottom sheet for tip: pick token (SOL/SKR), amount (presets + custom), send, then thank-you.
-void showTipSheet(BuildContext context) {
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (_) => const _TipSheet(),
-  );
-}
-
+/// Bottom sheet: pick a token (SKR default / SOL), an amount (presets or
+/// custom), send, then a thank-you state.
 class _TipSheet extends StatefulWidget {
   const _TipSheet();
 
@@ -128,18 +172,17 @@ class _TipSheet extends StatefulWidget {
 }
 
 class _TipSheetState extends State<_TipSheet> {
-  String _token = 'SOL';  // Changed default to SOL
-  String _amount = '0.05';
+  String _token = "SKR";
+  String _amount = "10";
   bool _sending = false;
   bool _done = false;
   String? _error;
-  bool _authorizing = false;
 
   static const _presets = {
-    'SOL': ['0.01', '0.05', '0.1'],  // SOL first
-    'SKR': ['5', '10', '50'],
+    "SKR": ["5", "10", "50"],
+    "SOL": ["0.01", "0.05", "0.1"],
   };
-  static const _max = {'SOL': 1.0, 'SKR': 1000.0};  // SOL first
+  static const _max = {"SKR": 1000.0, "SOL": 1.0};
 
   final TextEditingController _field = TextEditingController();
 
@@ -168,59 +211,23 @@ class _TipSheetState extends State<_TipSheet> {
     });
   }
 
-  void _onPreset(String p) {
-    setState(() {
-      _amount = p;
-      _field.text = p;
-      _error = null;
-    });
-  }
-
-  Future<void> _authorizeAndSend() async {
-    // First, ensure wallet is authorized
-    if (!_authorizing) {
-      setState(() {
-        _authorizing = true;
-        _error = null;
-      });
-
-      final auth = await WalletAuthService.instance.authorize();
-      if (!mounted) return;
-
-      setState(() {
-        _authorizing = false;
-      });
-
-      if (auth == null) {
-        setState(() {
-          _error = 'Wallet authorization cancelled or unavailable';
-        });
-        return;
-      }
-    }
-
-    // Now send the tip
+  Future<void> _send() async {
     final amt = double.tryParse(_amount);
     if (amt == null || amt <= 0) {
-      setState(() => _error = 'Enter a valid amount');
+      setState(() => _error = "Enter a valid amount");
       return;
     }
     final cap = _max[_token]!;
     if (amt > cap) {
-      setState(() => _error = 'More than the $cap $_token cap this app allows');
+      setState(() => _error = "More than the $cap $_token cap this app allows");
       return;
     }
-
     setState(() {
       _sending = true;
       _error = null;
     });
-
     final err = await WalletAuthService.instance.sendTip(
-      token: _token,
-      amountHuman: amt,
-    );
-
+        token: _token, amountHuman: amt);
     if (!mounted) return;
     setState(() {
       _sending = false;
@@ -235,8 +242,6 @@ class _TipSheetState extends State<_TipSheet> {
   @override
   Widget build(BuildContext context) {
     final h = MediaQuery.of(context).size.height;
-    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
-
     return Container(
       constraints: BoxConstraints(maxHeight: h * 0.78),
       decoration: BoxDecoration(
@@ -246,12 +251,7 @@ class _TipSheetState extends State<_TipSheet> {
           topRight: Radius.circular(20),
         ),
       ),
-      padding: EdgeInsets.only(
-        left: 24,
-        right: 24,
-        top: 24,
-        bottom: 24 + keyboardHeight,
-      ),
+      padding: const EdgeInsets.all(24),
       child: SingleChildScrollView(child: _body()),
     );
   }
@@ -265,7 +265,7 @@ class _TipSheetState extends State<_TipSheet> {
             const Icon(Icons.favorite, size: 48, color: VisorTheme.primary),
             const SizedBox(height: 16),
             const Text(
-              'Thank you for supporting Visor',
+              "Thank you for supporting Visor",
               style: TextStyle(
                 color: VisorTheme.text,
                 fontSize: 18,
@@ -274,14 +274,14 @@ class _TipSheetState extends State<_TipSheet> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Your tip went straight to the developer wallet. '
-              'This keeps Visor free and private for everyone.',
+              "Your tip went straight to the developer wallet. "
+              "This keeps Visor free and private for everyone.",
               style: const TextStyle(color: VisorTheme.textDim, fontSize: 14, height: 1.4),
             ),
             const SizedBox(height: 24),
             FilledButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Done'),
+              child: const Text("Done"),
             ),
           ],
         ),
@@ -293,7 +293,7 @@ class _TipSheetState extends State<_TipSheet> {
       children: [
         const SizedBox(height: 8),
         const Text(
-          'Send a tip',
+          "Send a tip",
           style: TextStyle(
             color: VisorTheme.text,
             fontSize: 18,
@@ -302,91 +302,78 @@ class _TipSheetState extends State<_TipSheet> {
         ),
         const SizedBox(height: 4),
         const Text(
-          'Straight to the developer. Choose a token and amount.',
+          "Straight to the developer. Choose a token and amount.",
           style: TextStyle(color: VisorTheme.textDim, fontSize: 13),
         ),
         const SizedBox(height: 16),
-
-        // Token selector
-        Text(
-          'Token',
-          style: const TextStyle(color: VisorTheme.textDim, fontSize: 13),
-        ),
-        const SizedBox(height: 8),
         Row(
-          children: _presets.keys.map((t) {
-            return Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: ChoiceChip(
-                  label: Text(t),
-                  selected: _token == t,
-                  onSelected: (_) => _onToken(t),
-                  labelStyle: const TextStyle(fontSize: 14),
+          children: [
+            for (final t in _presets.keys)
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(t),
+                    selected: _token == t,
+                    onSelected: (_) => _onToken(t),
+                    labelStyle: const TextStyle(fontSize: 14),
+                  ),
                 ),
               ),
-            );
-          }).toList(),
+          ],
         ),
         const SizedBox(height: 14),
-
-        // Amount input with presets
         Text(
-          'Amount ($_token)',
+          "Amount ($_token)",
           style: const TextStyle(color: VisorTheme.textDim, fontSize: 13),
         ),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
-          runSpacing: 8,
-          children: _presets[_token]!.map((p) {
-            return ActionChip(
-              label: Text(p),
-              onPressed: _sending || _authorizing ? null : () => _onPreset(p),
-              labelStyle: const TextStyle(fontSize: 14),
-            );
-          }).toList(),
+          children: [
+            for (final p in _presets[_token]!)
+              ActionChip(
+                label: Text(p),
+                onPressed: () => setState(() {
+                  _amount = p;
+                  _error = null;
+                }),
+              ),
+          ],
         ),
         const SizedBox(height: 12),
         TextField(
           controller: _field,
           keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          onChanged: (v) {
+            setState(() {
+              _amount = v;
+              _error = null;
+            });
+          },
           style: const TextStyle(color: VisorTheme.text, fontSize: 16),
           decoration: InputDecoration(
-            hintText: 'Custom amount',
-            hintStyle: TextStyle(color: VisorTheme.textDim),
+            hintText: "Custom amount ($_token)",
             filled: true,
             fillColor: VisorTheme.bg,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: VisorTheme.border),
             ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: VisorTheme.border),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: VisorTheme.primary, width: 2),
-            ),
-            errorText: _error,
-            errorStyle: const TextStyle(fontSize: 12),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           ),
-          onChanged: (v) => setState(() {
-            _amount = v;
-            _error = null;
-          }),
-          onSubmitted: (_) => _authorizing || _sending ? null : _authorizeAndSend(),
         ),
-        const SizedBox(height: 16),
-
-        // Send button
+        if (_error != null) ...[
+          const SizedBox(height: 10),
+          Text(
+            _error!,
+            style: const TextStyle(color: VisorTheme.danger, fontSize: 13),
+          ),
+        ],
+        const SizedBox(height: 18),
         SizedBox(
           width: double.infinity,
           child: FilledButton.icon(
-            onPressed: _sending || _authorizing ? null : _authorizeAndSend,
-            icon: _authorizing
+            onPressed: _sending ? null : _send,
+            icon: _sending
                 ? const SizedBox(
                     width: 16,
                     height: 16,
@@ -395,32 +382,27 @@ class _TipSheetState extends State<_TipSheet> {
                       color: VisorTheme.bg,
                     ),
                   )
-                : _sending
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: VisorTheme.bg,
-                        ),
-                      )
-                    : const Icon(Icons.send, size: 18),
-            label: Text(
-              _authorizing
-                  ? 'Connecting to Seed Vault…'
-                  : _sending
-                      ? 'Waiting for Seed Vault…'
-                      : 'Send tip',
-            ),
+                : const Icon(Icons.send, size: 18),
+            label: Text(_sending ? "Waiting for Seed Vault…" : "Send tip"),
           ),
         ),
         const SizedBox(height: 10),
         Text(
-          'A Seed Vault window will open — review and confirm the exact '
-          'amount before it goes out. You are in full control.',
+          "A Seed Vault window will open — review and confirm the exact "
+          "amount before it goes out. You are in full control.",
           style: TextStyle(color: VisorTheme.textDim, fontSize: 12, height: 1.3),
         ),
       ],
     );
   }
+}
+
+/// Show the tip sheet (full screen, so the Seed Vault deep-link can return).
+void showTipSheet(BuildContext context) {
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => const _TipSheet(),
+  );
 }
