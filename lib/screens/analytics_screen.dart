@@ -57,7 +57,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                               color: VisorTheme.textDim, fontSize: 13)),
                     ),
                     SizedBox(
-                      height: 200,
+                      height: 220,
                       child: Padding(
                         padding:
                             const EdgeInsets.symmetric(horizontal: 16),
@@ -100,7 +100,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                        '${s.grid}\u00D7${s.grid} \u00B7 ${s.pattern} \u00B7 ${s.durationS ~/ 60} min',
+                        '${s.grid}x${s.grid} \u00B7 ${s.pattern} \u00B7 ${s.durationS ~/ 60} min',
                         style: const TextStyle(
                             color: VisorTheme.text, fontSize: 14)),
                     Text(date,
@@ -137,9 +137,7 @@ class _ScoreChart extends StatelessWidget {
     final pts = sessions
         .map((s) => _ChartPoint(s.score, s.startedAt, s.id))
         .toList()
-      // Deterministic order: time, then id. A plain time sort is unstable,
-      // so two sessions recorded in the same millisecond could swap and
-      // reshape the line (the 100-peak would jump off the middle).
+      // Deterministic order: time, then id.
       ..sort((a, b) {
         final c = a.time.compareTo(b.time);
         return c != 0 ? c : a.id.compareTo(b.id);
@@ -162,10 +160,9 @@ class _ChartPainter extends CustomPainter {
   static const double padL = 34;
   static const double padR = 14;
   static const double padT = 22;
-  static const double padB = 20;
+  static const double padB = 30;
 
-  /// Round a raw max up to a clean ceiling (0-based scale so height is
-  /// proportional to the real value, not to a min..max window).
+  /// Round a raw max up to a clean ceiling (0-based scale).
   static double niceCeil(double v) {
     if (v <= 0) return 10;
     final exp = (math.log(v) / math.log(10)).floorToDouble();
@@ -176,8 +173,7 @@ class _ChartPainter extends CustomPainter {
     return nice * mag;
   }
 
-  /// Snap a label value to a clean number so gridlines/labels are round
-  /// (e.g. yMax=100 -> "0/50/100", not "0/55/100").
+  /// Snap a label value to a clean number so gridlines/labels are round.
   static double _niceLabel(double v, double yMax) {
     final f = v / yMax;
     final snapped = (f * 2.0).roundToDouble() / 2.0;
@@ -186,6 +182,9 @@ class _ChartPainter extends CustomPainter {
 
   static String _date(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}';
+
+  static String _time(DateTime d) =>
+      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
   void _label(
       Canvas canvas,
@@ -213,7 +212,7 @@ class _ChartPainter extends CustomPainter {
     final tp = TextPainter(textDirection: TextDirection.ltr);
     final dimStyle = TextStyle(color: VisorTheme.textDim, fontSize: 10);
 
-    // grid: 0 / 50% / 100% with numeric Y labels.
+    // Y-axis grid: 0 / 50% / 100% with numeric Y labels.
     final grid = Paint()
       ..color = VisorTheme.textDim.withValues(alpha: 0.25)
       ..strokeWidth = 1;
@@ -235,11 +234,29 @@ class _ChartPainter extends CustomPainter {
       return Offset(x, y);
     }
 
-    // x-axis date labels (first / last).
+    // X-axis labels: first / middle / last (time for same day, date for multi-day)
+    final firstTime = points.first.time;
+    final lastTime = points.last.time;
+    final sameDay = firstTime.day == lastTime.day &&
+        firstTime.month == lastTime.month &&
+        firstTime.year == lastTime.year;
+
     if (n >= 2) {
-      _label(canvas, tp, _date(points.first.time), dimStyle,
+      String labelFor(_ChartPoint p) => sameDay ? _time(p.time) : _date(p.time);
+      
+      _label(canvas, tp, labelFor(points.first), dimStyle,
           Offset(padL, baseY + 6));
-      _label(canvas, tp, _date(points.last.time), dimStyle,
+      
+      // Middle label if we have enough points
+      if (n >= 3) {
+        final mid = points[n ~/ 2];
+        final midX = padL + plotW * ((n ~/ 2) / (n - 1));
+        final midLabel = labelFor(mid);
+        _label(canvas, tp, midLabel, dimStyle,
+            Offset(midX - 18, baseY + 6));
+      }
+      
+      _label(canvas, tp, labelFor(points.last), dimStyle,
           Offset(padL + plotW - 28, baseY + 6));
     }
 

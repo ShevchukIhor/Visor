@@ -43,3 +43,7 @@ visor-assets/banner_B*.png
 
 # Unused CI draft (native CF GitHub App, not Actions)
 .github/
+
+# Other
+documentation/
+build.sh

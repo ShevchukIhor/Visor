@@ -15,9 +15,9 @@ import java.util.Calendar
 
 /**
  * Visor host activity. Exposes three MethodChannels:
- *  - "visor/reminder" — daily training reminder via AlarmManager (exact).
- *  - "visor/wallet"   — Seed Vault (MWA) authorize.
- *  - "visor/notify"   — request POST_NOTIFICATIONS permission + test fire.
+ *  - "visor/reminder" -- daily training reminder via AlarmManager (exact).
+ *  - "visor/wallet"   -- Seed Vault (MWA) authorize + sendTip.
+ *  - "visor/notify"   -- request POST_NOTIFICATIONS permission + test fire.
  *
  * Uses FlutterFragmentActivity (a ComponentActivity) because the Mobile Wallet
  * Adapter clientlib requires ComponentActivity for ActivityResultSender.
@@ -165,7 +165,7 @@ object ReminderScheduler {
       }
       true
     } catch (e: SecurityException) {
-      // SCHEDULE_EXACT_ALARM not granted on Android 12+ — fall back to inexact.
+      // SCHEDULE_EXACT_ALARM not granted on Android 12+ -- fall back to inexact.
       try {
         am.set(AlarmManager.RTC_WAKEUP, triggerAt, pi)
         true

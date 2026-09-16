@@ -17,6 +17,7 @@ class VisorTheme {
   static const Color success = Color(0xFF3DDC84);
   static const Color danger = Color(0xFFFF5A5F);
   static const Color pro = Color(0xFF9A6BFF);
+  static const Color border = Color(0xFF2A2A35);
 
   static ThemeData get theme => ThemeData(
         brightness: Brightness.dark,
