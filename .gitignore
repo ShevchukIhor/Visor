@@ -44,4 +44,4 @@ visor-assets/banner_B*.png
 # Unused CI draft (native CF GitHub App, not Actions)
 .github/
 documentation/
-.opencode/
+.opencode/COMMIT_BACKUP.txt
