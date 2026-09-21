@@ -332,13 +332,14 @@ class _TipSheetState extends State<_TipSheet> {
           spacing: 8,
           children: [
             for (final p in _presets[_token]!)
-              ActionChip(
-                label: Text(p),
-                onPressed: () => setState(() {
-                  _amount = p;
-                  _error = null;
-                }),
-              ),
+               ActionChip(
+                 label: Text(p),
+                 onPressed: () => setState(() {
+                   _amount = p;
+                   _field.text = p;
+                   _error = null;
+                 }),
+               ),
           ],
         ),
         const SizedBox(height: 12),

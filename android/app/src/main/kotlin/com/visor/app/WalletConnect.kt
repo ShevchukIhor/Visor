@@ -17,6 +17,7 @@ import com.solana.transaction.Transaction
 import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -54,6 +55,11 @@ object WalletConnect {
   @Volatile
   private var sender: ActivityResultSender? = null
 
+  /** Last successfully authorized wallet — cached so sendTip can pre-check
+   *  the SKR balance WITHOUT opening the Seed Vault UI first. */
+  @Volatile
+  private var lastAuthOwner: SolanaPublicKey? = null
+
   /** Called from configureFlutterEngine — before the activity is STARTED. */
   fun attach(activity: ComponentActivity) {
     if (sender == null) {
@@ -76,6 +82,7 @@ object WalletConnect {
               result.success(null)
               return@launch
             }
+            lastAuthOwner = SolanaPublicKey(pubkey)
             val map = mutableMapOf<String, Any?>()
             map["pubkey_bytes"] = pubkey.map { it.toInt() and 0xFF }
             map["auth_token"] = txResult.authResult.authToken
@@ -102,6 +109,9 @@ object WalletConnect {
   // ---- Tip/donate -------------------------------------------------------
 
   private const val RECIPIENT = "H2gnCCWcAtjgRYVPdCLv37zFdPu4TsdLwfMzvedKXW5w"
+  // Mainnet SKR (Seeker) mint — verified on-chain (owner Tokenkeg, decimals=6)
+  // and via real Raydium liquidity. NOTE: SKRjs1DEM... (with a literal '0') is
+  // a scam entry and also invalid base58.
   private const val SKR_MINT = "SKRbvo6Gf7GondiT3BbTfuRDPqLWei4j2Qy2NPGZhW3"
   private const val SKR_DECIMALS = 6
   // Public mainnet RPC endpoints, tried in order. The official one
@@ -111,7 +121,6 @@ object WalletConnect {
     "https://solana-rpc.publicnode.com",
   )
 
-  private const val MIN_HUMAN = 0.01
   private const val SOL_MAX = 1.0
   private const val SKR_MAX = 1000.0
 
@@ -138,13 +147,35 @@ object WalletConnect {
         }
 
         val recipient = SolanaPublicKey.from(RECIPIENT)
-        val blockhash = getRecentBlockhash()
-          ?: run { result.error("NO_BLOCKHASH", "recent blockhash unavailable", null); return@launch }
+
+        // Pre-check SKR balance BEFORE opening the wallet UI: an exception
+        // thrown inside transact{} surfaces as a masked "cancelled" error.
+        if (token == "SKR") {
+          val cached = lastAuthOwner
+          if (cached != null) {
+            val ata = deriveAta(cached, SolanaPublicKey.from(SKR_MINT))
+            val bal = ata?.let { tokenBalanceBase(it) }
+            if (bal != null && bal < amountBase) {
+              result.error(
+                "TIP_FAILED",
+                if (bal == 0L) "No SKR in your wallet (balance 0)"
+                else "Not enough SKR: have ${bal / 1_000_000.0}, need ${amountBase / 1_000_000.0}",
+                null,
+              )
+              return@launch
+            }
+          }
+        }
 
         val txResult = walletAdapter.transact(s) { auth ->
           val ownerBytes = auth.accounts.firstOrNull()?.publicKey
             ?: throw IllegalStateException("no authorized account")
           val owner = SolanaPublicKey(ownerBytes)
+
+          // Fetch blockhash as late as possible — it expires ~60-90 s after
+          // being issued, and the user spends that time in the wallet UI.
+          val blockhash = getRecentBlockhash()
+            ?: throw IllegalStateException("recent blockhash unavailable")
 
           val instructions = buildInstructions(token, recipient, owner, amountBase)
 
@@ -163,6 +194,7 @@ object WalletConnect {
             result.error("NO_WALLET", txResult.message, null)
           }
           is TransactionResult.Failure -> {
+            Log.w(TAG, "tip failed: ${txResult.message}", txResult.e)
             result.error("TIP_FAILED", "${txResult.message}: ${txResult.e.message}", null)
           }
         }
@@ -175,7 +207,7 @@ object WalletConnect {
 
   private fun baseUnits(token: String, amountHuman: Double): Long {
     val max = if (token == "SOL") SOL_MAX else SKR_MAX
-    if (amountHuman < MIN_HUMAN || amountHuman > max) return -1
+    if (amountHuman <= 0 || amountHuman > max) return -1
     return when (token) {
       "SOL" -> (amountHuman * 1_000_000_000).toLong()
       "SKR" -> (amountHuman * 1_000_000).toLong()
@@ -196,16 +228,31 @@ object WalletConnect {
         ?: throw IllegalStateException("cannot derive owner ATA")
       val toAta = deriveAta(recipient, mint)
         ?: throw IllegalStateException("cannot derive recipient ATA")
+      // Self-check: fail fast with a clear message instead of a Seed Vault
+      // simulation error when the sender has no/insufficient SKR.
+      val bal = tokenBalanceBase(fromAta)
+      if (bal != null && bal < amountBase) {
+        throw IllegalStateException(
+          if (bal == 0L) "No SKR in your wallet (balance 0)"
+          else "Not enough SKR: have ${bal / 1_000_000.0}, need ${amountBase / 1_000_000.0}"
+        )
+      }
       val instrs = mutableListOf<com.solana.transaction.TransactionInstruction>()
       // Recipient's SKR ATA must exist or the token has nowhere to land.
-      // Create it in the same tx (owner pays the tiny rent) if missing.
-      if (!accountExists(toAta)) {
+      // Create it in the same tx (owner pays the tiny rent) ONLY when we are
+      // sure it's missing: rpcCall->null (RPC outage) used to mean false, which
+      // added createATA for an existing ATA -> simulation "already in use" fail.
+      // (This lib has no idempotent createIdempotent variant.)
+      val ataExists = accountExists(toAta)
+      if (ataExists == false) {
         instrs += AssociatedTokenProgram.createAssociatedTokenAccount(
           mint = mint,
           associatedAccount = toAta,
           owner = recipient,
           payer = owner,
         )
+      } else if (ataExists == null) {
+        Log.w(TAG, "recipient ATA existence unknown (RPC failed) — skipping createATA")
       }
       instrs += TokenProgram.transferChecked(
         from = fromAta,
@@ -221,9 +268,11 @@ object WalletConnect {
   }
 
   private suspend fun deriveAta(owner: SolanaPublicKey, mint: SolanaPublicKey): SolanaPublicKey? {
-    val ataId = AssociatedTokenProgram.PROGRAM_ID
     val tokenId = TokenProgram.PROGRAM_ID
-    val seeds = listOf(ataId.bytes, owner.bytes, tokenId.bytes, mint.bytes)
+    // Canonical SPL ATA derivation: PDA under ATA program with seeds in
+    // this exact order — [wallet, token_program, mint]. Any other order
+    // yields a different (wrong) PDA and the tx fails simulation.
+    val seeds = listOf(owner.bytes, tokenId.bytes, mint.bytes)
     return try {
       val pda = AssociatedTokenProgram.findDerivedAddress(seeds).getOrThrow()
       SolanaPublicKey(pda.bytes)
@@ -236,7 +285,7 @@ object WalletConnect {
   /** getRecentBlockhash via mainnet JSON-RPC (MWA has no RPC wrapper).
    *  Note: getRecentBlockhash is removed from the public RPC; use
    *  getLatestBlockhash with the modern object params. */
-  private fun getRecentBlockhash(): String? =
+  private suspend fun getRecentBlockhash(): String? = withContext(Dispatchers.IO) {
     rpcCall(
       """
       {"jsonrpc":"2.0","id":1,
@@ -245,18 +294,43 @@ object WalletConnect {
       """.trimIndent(),
     )
       ?.let {
-        val result = it.optJSONObject("result") ?: return null
+        val result = it.optJSONObject("result") ?: return@withContext null
         val value = result.optJSONObject("value")
         value?.optString("blockhash")
       }
+  }
 
-  private fun accountExists(pubkey: SolanaPublicKey): Boolean {
-    val params = JSONObject().put("encoding", "base64").put("commitment", "confirmed")
+  /** true = exists, false = definitely absent, null = RPC unknown. */
+  private suspend fun accountExists(pubkey: SolanaPublicKey): Boolean? = withContext(Dispatchers.IO) {
     val req = JSONObject().put("jsonrpc", "2.0").put("id", 1)
       .put("method", "getAccountInfo").put("params", org.json.JSONArray().put(pubkey.address))
-    val resp = rpcCall(req.toString()) ?: return false
+    val resp = rpcCall(req.toString()) ?: return@withContext null
     val value = resp.optJSONObject("result")?.optJSONObject("value")
-    return value != null
+    value != null
+  }
+
+  /**
+   * SKR balance of a token account in base units.
+   * 0 if the account does not exist; null if all RPCs failed (caller then
+   * skips the pre-check rather than blocking a healthy wallet).
+   */
+  private suspend fun tokenBalanceBase(ata: SolanaPublicKey): Long? = withContext(Dispatchers.IO) {
+    val req = JSONObject().put("jsonrpc", "2.0").put("id", 1)
+      .put("method", "getTokenAccountBalance")
+      .put("params", org.json.JSONArray().put(ata.address))
+    for (url in RPCS) {
+      val resp = rpcPostRaw(url, req.toString()) ?: continue
+      val err = resp.optJSONObject("error")
+      if (err != null) {
+        // -32602 "Invalid param: could not find account" => no ATA => 0 balance.
+        if (err.optInt("code") == -32602) return@withContext 0L
+        continue // other RPC error: try next endpoint
+      }
+      val amount = resp.optJSONObject("result")
+        ?.optJSONObject("value")?.optString("amount") ?: continue
+      return@withContext amount.toLongOrNull()
+    }
+    null
   }
 
   private fun rpcCall(body: String): JSONObject? {
@@ -268,6 +342,16 @@ object WalletConnect {
   }
 
   private fun rpcPost(url: String, body: String): JSONObject? {
+    val json = rpcPostRaw(url, body) ?: return null
+    if (json.has("error")) {
+      Log.w(TAG, "rpc $url -> ${json.optString("error")}")
+      return null
+    }
+    return json
+  }
+
+  /** POST without JSON-RPC "error" filtering — caller inspects errors itself. */
+  private fun rpcPostRaw(url: String, body: String): JSONObject? {
     return try {
       val conn = URL(url).openConnection() as HttpURLConnection
       conn.requestMethod = "POST"
@@ -282,13 +366,7 @@ object WalletConnect {
         return null
       }
       val text = conn.inputStream.bufferedReader().use { it.readText() }
-      val json = JSONObject(text)
-      // A JSON-RPC error payload ({"error":{...}}) is not a usable blockhash.
-      if (json.has("error")) {
-        Log.w(TAG, "rpc $url -> ${json.optString("error")}")
-        return null
-      }
-      json
+      JSONObject(text)
     } catch (e: Exception) {
       Log.e(TAG, "rpc $url failed", e)
       null
