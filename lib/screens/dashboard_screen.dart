@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../core/db/vision_db.dart';
 import '../core/theme/visor_theme.dart';
-import '../core/wallet/wallet_auth.dart';
 import 'analytics_screen.dart';
 import 'exercises_screen.dart';
 import 'reminder_screen.dart';
@@ -21,10 +20,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _streak = 0;
   int _today = 0;
   double _best = 0;
-  String? _walletAddress;
-  String? _walletLabel;
-  bool _connecting = false;
-  String _walletError = '';
 
   @override
   void initState() {
@@ -36,58 +31,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final streak = await VisionDb.instance.streak();
     final today = await VisionDb.instance.sessionsOnDay(DateTime.now());
     final best = await VisionDb.instance.bestScore();
-    final acct = await VisionDb.instance.getAccount();
     if (!mounted) return;
     setState(() {
       _streak = streak;
       _today = today;
       _best = best;
-      _walletAddress = acct?['address'] as String?;
-      _walletLabel = acct?['label'] as String?;
     });
-  }
-
-  Future<void> _connectWallet() async {
-    if (_connecting) return;
-    setState(() {
-      _connecting = true;
-      _walletError = '';
-    });
-    try {
-      final auth = await WalletAuthService.instance.authorize();
-      if (auth == null) {
-        setState(() => _walletError = 'Cancelled');
-      } else {
-        await VisionDb.instance.setAccount(auth.address, auth.accountLabel);
-        setState(() {
-          _walletAddress = auth.address;
-          _walletLabel = auth.accountLabel;
-        });
-      }
-    } catch (e) {
-      setState(() => _walletError = _friendlyWalletError(e.toString()));
-    } finally {
-      if (mounted) setState(() => _connecting = false);
-    }
-  }
-
-  Future<void> _disconnectWallet() async {
-    await VisionDb.instance.clearAccount();
-    setState(() {
-      _walletAddress = null;
-      _walletLabel = null;
-      _walletError = '';
-    });
-  }
-
-  String _friendlyWalletError(String raw) {
-    if (raw.contains('NO_WALLET')) {
-      return 'No Solana wallet found. Install Seed Vault (Solana Mobile).';
-    }
-    if (raw.contains('AUTH_FAILED') || raw.contains('AUTH_EXCEPTION')) {
-      return raw.split(':').last.trim();
-    }
-    return raw;
   }
 
   @override
@@ -120,8 +69,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ],
               ),
               const SizedBox(height: 16),
-              _accountCard(),
-              const SizedBox(height: 12),
               _statsRow(),
               const SizedBox(height: 24),
               _menuButton(
@@ -191,89 +138,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _accountCard() {
-    final connected = _walletAddress != null;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: VisorTheme.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: connected ? VisorTheme.success : VisorTheme.surfaceAlt,
-          width: 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                connected ? Icons.account_balance_wallet : Icons.wallet_outlined,
-                color: connected ? VisorTheme.success : VisorTheme.textDim,
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                connected ? 'Seed Vault connected' : 'No wallet connected',
-                style: const TextStyle(
-                  color: VisorTheme.text,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                ),
-              ),
-              const Spacer(),
-              if (connected)
-                TextButton(
-                  onPressed: _disconnectWallet,
-                  child: const Text('Disconnect',
-                      style: TextStyle(color: VisorTheme.danger)),
-                )
-              else
-                FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: VisorTheme.primary,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 8),
-                  ),
-                  onPressed: _connecting ? null : _connectWallet,
-                  child: _connecting
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Color(0xFF001428)),
-                        )
-                      : const Text('Connect'),
-                ),
-            ],
-          ),
-          if (connected) ...[
-            const SizedBox(height: 6),
-            Text(
-              _walletLabel != null && _walletLabel!.isNotEmpty
-                  ? '$_walletLabel\n$_walletAddress'
-                  : _walletAddress!,
-              style: const TextStyle(
-                color: VisorTheme.textDim,
-                fontSize: 12,
-                fontFamily: 'monospace',
-              ),
-            ),
-          ],
-          if (_walletError.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(
-              _walletError,
-              style: const TextStyle(color: VisorTheme.danger, fontSize: 12),
-            ),
-          ],
-        ],
       ),
     );
   }

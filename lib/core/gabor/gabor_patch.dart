@@ -104,6 +104,41 @@ class GaborPatch {
   }
 }
 
+/// Render to a **circular** RGBA image on a transparent background.
+///
+/// Same Gabor stimulus as [renderRgba], but a smooth radial alpha mask fades
+/// the patch to fully transparent before the square edges — so on screen it
+/// reads as a perfect sphere/circle, not a square card.
+///
+/// NOTE: `ui.decodeImageFromPixels` expects **premultiplied** alpha, so RGB
+/// channels are pre-scaled by the mask (otherwise Skia treats RGB>A pixels as
+/// opaque and the patch renders as a square).
+Uint8List renderRgbaCircular(GaborPatch patch, int size) {
+  final g = patch.render(size);
+  final out = Uint8List(size * size * 4);
+  final half = size / 2.0;
+  var i = 0;
+  for (var py = 0; py < size; py++) {
+    final ny = (py - half) / half;
+    for (var px = 0; px < size; px++) {
+      final nx = (px - half) / half;
+      final v = g[py * size + px]; // in [-1, 1]
+      final n = (v + 1.0) / 2.0; // [0, 1]
+      final gray = 255 * n;
+      // Radial alpha mask: opaque to r≈0.72, smoothly fading to 0 at r≈0.98.
+      final r = math.sqrt(nx * nx + ny * ny);
+      final alpha = ((0.98 - r) / 0.26).clamp(0.0, 1.0);
+      final a = alpha * alpha * (3 - 2 * alpha); // smoothstep
+      final premul = (gray * a).round().clamp(0, 255).toInt();
+      out[i++] = premul;
+      out[i++] = premul;
+      out[i++] = premul;
+      out[i++] = (a * 255).round();
+    }
+  }
+  return out;
+}
+
 /// Difficulty rules: which parameter axes may vary between the target and
 /// the distractor patches, and by how much. Tighter tolerances = harder.
 enum Difficulty {
