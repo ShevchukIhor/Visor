@@ -37,7 +37,8 @@ import java.net.URL
  *  - recipient is a fixed constant (the publisher's Solana address), never
  *    user-supplied.
  *  - token is whitelisted (SOL or SKR only) — no arbitrary mints.
- *  - amount clamped to sane min/max so a mistyped value can't drain the wallet.
+ *  - minimum tip amount only (dust/typo guard); no upper cap — the sender's
+ *    wallet balance is the ceiling and Seed Vault approves the real tx.
  *  - user must approve the real transaction in the Seed Vault app.
  */
 object WalletConnect {
@@ -121,8 +122,13 @@ object WalletConnect {
     "https://solana-rpc.publicnode.com",
   )
 
-  private const val SOL_MAX = 1.0
-  private const val SKR_MAX = 1000.0
+  // Minimum tip amounts (dust/typo guard). No upper cap by design.
+  private const val SOL_MIN = 0.001
+  private const val SKR_MIN = 5.0
+
+  // Lamport headroom kept on top of a SOL tip for the network fee
+  // (~5000 lamports) so the balance check doesn't greenlight an unpayable tx.
+  private const val SOL_FEE_BUFFER = 100_000L
 
   /**
    * Send a tip from the (pre-authorized) Seed Vault wallet.
@@ -143,16 +149,20 @@ object WalletConnect {
       try {
         val amountBase = baseUnits(token, amountHuman)
         if (amountBase < 0) {
-          result.error("BAD_AMOUNT", "amount out of range", null); return@launch
+          val min = if (token == "SOL") SOL_MIN else SKR_MIN
+          result.error("BAD_AMOUNT", "Minimum tip is $min $token", null)
+          return@launch
         }
 
         val recipient = SolanaPublicKey.from(RECIPIENT)
 
-        // Pre-check SKR balance BEFORE opening the wallet UI: an exception
+        // Pre-check balances BEFORE opening the wallet UI: an exception
         // thrown inside transact{} surfaces as a masked "cancelled" error.
-        if (token == "SKR") {
-          val cached = lastAuthOwner
-          if (cached != null) {
+        // Skipped silently when there is no cached auth or all RPCs are down
+        // (bal == null) — the in-transact check below is the safety net.
+        val cached = lastAuthOwner
+        if (cached != null) {
+          if (token == "SKR") {
             val ata = deriveAta(cached, SolanaPublicKey.from(SKR_MINT))
             val bal = ata?.let { tokenBalanceBase(it) }
             if (bal != null && bal < amountBase) {
@@ -160,6 +170,17 @@ object WalletConnect {
                 "TIP_FAILED",
                 if (bal == 0L) "No SKR in your wallet (balance 0)"
                 else "Not enough SKR: have ${bal / 1_000_000.0}, need ${amountBase / 1_000_000.0}",
+                null,
+              )
+              return@launch
+            }
+          } else {
+            val bal = lamportBalance(cached)
+            if (bal != null && bal < amountBase + SOL_FEE_BUFFER) {
+              result.error(
+                "TIP_FAILED",
+                if (bal == 0L) "No SOL in your wallet (balance 0)"
+                else "Not enough SOL: have ${bal / 1_000_000_000.0}, need ${amountBase / 1_000_000_000.0} + fee",
                 null,
               )
               return@launch
@@ -206,8 +227,8 @@ object WalletConnect {
   }
 
   private fun baseUnits(token: String, amountHuman: Double): Long {
-    val max = if (token == "SOL") SOL_MAX else SKR_MAX
-    if (amountHuman <= 0 || amountHuman > max) return -1
+    val min = if (token == "SOL") SOL_MIN else SKR_MIN
+    if (amountHuman < min) return -1
     return when (token) {
       "SOL" -> (amountHuman * 1_000_000_000).toLong()
       "SKR" -> (amountHuman * 1_000_000).toLong()
@@ -221,7 +242,18 @@ object WalletConnect {
     owner: SolanaPublicKey,
     amountBase: Long,
   ): List<com.solana.transaction.TransactionInstruction> = when (token) {
-    "SOL" -> listOf(SystemProgram.transfer(owner, recipient, amountBase))
+    "SOL" -> {
+      // Self-check: fail fast with a clear message instead of a Seed Vault
+      // simulation error when the sender can't cover amount + fee.
+      val bal = lamportBalance(owner)
+      if (bal != null && bal < amountBase + SOL_FEE_BUFFER) {
+        throw IllegalStateException(
+          if (bal == 0L) "No SOL in your wallet (balance 0)"
+          else "Not enough SOL: have ${bal / 1_000_000_000.0}, need ${amountBase / 1_000_000_000.0} + fee"
+        )
+      }
+      listOf(SystemProgram.transfer(owner, recipient, amountBase))
+    }
     "SKR" -> {
       val mint = SolanaPublicKey.from(SKR_MINT)
       val fromAta = deriveAta(owner, mint)
@@ -329,6 +361,23 @@ object WalletConnect {
       val amount = resp.optJSONObject("result")
         ?.optJSONObject("value")?.optString("amount") ?: continue
       return@withContext amount.toLongOrNull()
+    }
+    null
+  }
+
+  /**
+   * Lamport balance of a wallet; null if all RPCs failed (caller then skips
+   * the pre-check rather than blocking a healthy wallet).
+   */
+  private suspend fun lamportBalance(owner: SolanaPublicKey): Long? = withContext(Dispatchers.IO) {
+    val req = JSONObject().put("jsonrpc", "2.0").put("id", 1)
+      .put("method", "getBalance")
+      .put("params", org.json.JSONArray().put(owner.address))
+    for (url in RPCS) {
+      val resp = rpcPostRaw(url, req.toString()) ?: continue
+      if (resp.has("error")) continue
+      val v = resp.optJSONObject("result")?.optLong("value", -1L) ?: continue
+      if (v >= 0) return@withContext v
     }
     null
   }

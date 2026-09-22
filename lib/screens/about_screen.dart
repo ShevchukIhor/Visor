@@ -33,6 +33,24 @@ class _AboutScreenState extends State<AboutScreen> {
     showTipSheet(context);
   }
 
+  /// A body paragraph with a proper first-line indent and comfortable
+  /// leading (Flutter has no built-in first-line indent, so a leading
+  /// [WidgetSpan] shim does the job).
+  Widget _para(String text, {Color color = VisorTheme.text, double size = 14}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: RichText(
+        text: TextSpan(
+          style: TextStyle(color: color, fontSize: size, height: 1.5),
+          children: [
+            const WidgetSpan(child: SizedBox(width: 18)),
+            TextSpan(text: text),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -48,37 +66,31 @@ class _AboutScreenState extends State<AboutScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              _para(
                 "Visor trains your visual cortex with Gabor-patch games and "
                 "guided eye exercises — the same stimuli neuroscience uses "
                 "to study vision. Regular short sessions can ease screen "
                 "fatigue, sharpen focus, and loosen eye strain from long "
                 "near-work.",
-                style: TextStyle(color: VisorTheme.text, fontSize: 15, height: 1.4),
+                size: 15,
               ),
-              const SizedBox(height: 14),
-              const Text(
+              _para(
                 "Each card differs by a single controlled parameter — "
                 "orientation, frequency, or phase — so your brain learns to "
                 "tell real visual detail apart, not just guess at noise.",
-                style: TextStyle(color: VisorTheme.text, fontSize: 14, height: 1.35),
               ),
-              const SizedBox(height: 14),
-              const Text(
+              _para(
                 "Private by design: no accounts, no ads, no trackers, no "
                 "telemetry. Every session is stored locally on your device "
                 "and never leaves it.",
-                style: TextStyle(color: VisorTheme.text, fontSize: 14, height: 1.35),
               ),
-              const SizedBox(height: 14),
-              const Text(
+              _para(
                 "Visor is a training tool, not a medical device. It does not "
                 "diagnose or treat any eye condition. If you experience "
                 "persistent pain, double vision, or sudden vision changes, "
                 "see an eye-care professional.",
-                style: TextStyle(color: VisorTheme.danger, fontSize: 14, height: 1.35),
+                color: VisorTheme.danger,
               ),
-              const SizedBox(height: 14),
               const Text(
                 "If Visor helped your eyes, a tip is appreciated — never "
                 "required.",
@@ -182,7 +194,9 @@ class _TipSheetState extends State<_TipSheet> {
     "SKR": ["5", "10", "50"],
     "SOL": ["0.01", "0.05", "0.1"],
   };
-  static const _max = {"SKR": 1000.0, "SOL": 1.0};
+  // Minimum tip amounts (dust/typo guard); no upper cap by design.
+  static const _minLabel = {"SKR": "5", "SOL": "0.001"};
+  static const _min = {"SKR": 5.0, "SOL": 0.001};
 
   final TextEditingController _field = TextEditingController();
 
@@ -217,9 +231,8 @@ class _TipSheetState extends State<_TipSheet> {
       setState(() => _error = "Enter a valid amount");
       return;
     }
-    final cap = _max[_token]!;
-    if (amt > cap) {
-      setState(() => _error = "More than the $cap $_token cap this app allows");
+    if (amt < _min[_token]!) {
+      setState(() => _error = "Minimum tip is ${_minLabel[_token]} $_token");
       return;
     }
     setState(() {
@@ -242,6 +255,7 @@ class _TipSheetState extends State<_TipSheet> {
   @override
   Widget build(BuildContext context) {
     final h = MediaQuery.of(context).size.height;
+    final keyboard = MediaQuery.of(context).viewInsets.bottom;
     return Container(
       constraints: BoxConstraints(maxHeight: h * 0.78),
       decoration: BoxDecoration(
@@ -251,7 +265,8 @@ class _TipSheetState extends State<_TipSheet> {
           topRight: Radius.circular(20),
         ),
       ),
-      padding: const EdgeInsets.all(24),
+      // Lift the sheet above the keyboard so the amount field stays visible.
+      padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + keyboard),
       child: SingleChildScrollView(child: _body()),
     );
   }
