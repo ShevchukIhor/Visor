@@ -1,7 +1,9 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../core/analytics/chart_math.dart';
 import '../core/db/vision_db.dart';
 import '../core/theme/visor_theme.dart';
 
@@ -153,6 +155,16 @@ class _ChartPoint {
   final DateTime time;
   final int id;
   const _ChartPoint(this.score, this.time, this.id);
+
+  @override
+  bool operator ==(Object other) =>
+      other is _ChartPoint &&
+      other.score == score &&
+      other.time == time &&
+      other.id == id;
+
+  @override
+  int get hashCode => Object.hash(score, time, id);
 }
 
 class _ChartPainter extends CustomPainter {
@@ -163,26 +175,6 @@ class _ChartPainter extends CustomPainter {
   static const double padR = 14;
   static const double padT = 22;
   static const double padB = 20;
-
-  /// Round a raw max up to a clean ceiling (0-based scale so height is
-  /// proportional to the real value, not to a min..max window).
-  static double niceCeil(double v) {
-    if (v <= 0) return 10;
-    final exp = (math.log(v) / math.log(10)).floorToDouble();
-    final mag = math.pow(10.0, exp).toDouble();
-    final n = v / mag;
-    final nice = [1.0, 2.0, 2.5, 5.0, 10.0]
-        .firstWhere((c) => n <= c, orElse: () => 10.0);
-    return nice * mag;
-  }
-
-  /// Snap a label value to a clean number so gridlines/labels are round
-  /// (e.g. yMax=100 -> "0/50/100", not "0/55/100").
-  static double _niceLabel(double v, double yMax) {
-    final f = v / yMax;
-    final snapped = (f * 2.0).roundToDouble() / 2.0;
-    return snapped * yMax;
-  }
 
   static String _date(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}';
@@ -220,10 +212,11 @@ class _ChartPainter extends CustomPainter {
     for (final f in [0.0, 0.5, 1.0]) {
       final y = padT + plotH * (1 - f);
       canvas.drawLine(Offset(padL, y), Offset(padL + plotW, y), grid);
+      // yMax comes from niceCeil, so 0 / 0.5 / 1 of it are already round.
       _label(
           canvas,
           tp,
-          _niceLabel(f * yMax, yMax).toStringAsFixed(0),
+          (f * yMax).toStringAsFixed(0),
           dimStyle,
           Offset(padL - 28, y - 7));
     }
@@ -294,5 +287,8 @@ class _ChartPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _ChartPainter old) => old.points != points;
+  bool shouldRepaint(covariant _ChartPainter old) =>
+      // A fresh list is built on every rebuild, so identity would always
+      // differ; compare the points themselves.
+      !listEquals(old.points, points);
 }

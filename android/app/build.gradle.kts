@@ -45,9 +45,16 @@ android {
 
     buildTypes {
         release {
+            // Falling back to the debug key silently would ship an APK that
+            // cannot be updated over a real release, so the fallback is loud
+            // and only survives until the release build is actually assembled.
             signingConfig = if (hasKeyProperties) {
                 signingConfigs.getByName("release")
             } else {
+                logger.warn(
+                    "WARNING: android/key.properties not found - release will " +
+                        "be signed with the DEBUG key. Do not distribute this APK."
+                )
                 signingConfigs.getByName("debug")
             }
         }
@@ -68,4 +75,21 @@ dependencies {
 
 flutter {
     source = "../.."
+}
+
+// Hard stop: a release artifact must never leave this machine debug-signed.
+// Set -PallowDebugSignedRelease=true only for a local smoke test.
+gradle.taskGraph.whenReady {
+    val assemblingRelease = allTasks.any {
+        it.project == project && it.name.contains("Release") &&
+            (it.name.startsWith("assemble") || it.name.startsWith("bundle"))
+    }
+    val override = project.findProperty("allowDebugSignedRelease") == "true"
+    if (assemblingRelease && !hasKeyProperties && !override) {
+        throw GradleException(
+            "Release build requested but android/key.properties is missing. " +
+                "Add the signing config, or pass -PallowDebugSignedRelease=true " +
+                "to build a debug-signed release for local testing only."
+        )
+    }
 }

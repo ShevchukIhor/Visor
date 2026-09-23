@@ -58,9 +58,34 @@ class ReminderService {
   }
 
   /// Ask the OS for POST_NOTIFICATIONS permission (API 33+).
-  static Future<void> requestNotificationPermission() async {
+  ///
+  /// Resolves only once the user has answered the system dialog, so the
+  /// returned value is the real outcome — not the state from before it was
+  /// shown.
+  static Future<bool> requestNotificationPermission() async {
     try {
-      await _notify.invokeMethod('requestNotificationPermission');
+      final v = await _notify.invokeMethod<bool>('requestNotificationPermission');
+      return v ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Whether Android will honour exact alarms (Android 12+ gates them behind
+  /// a special permission). False means reminders fall back to inexact timing.
+  static Future<bool> canScheduleExactAlarms() async {
+    try {
+      final v = await _notify.invokeMethod<bool>('canScheduleExactAlarms');
+      return v ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// Open the system screen where the user can grant exact alarms.
+  static Future<void> openExactAlarmSettings() async {
+    try {
+      await _notify.invokeMethod('openExactAlarmSettings');
     } catch (_) {}
   }
 

@@ -155,7 +155,7 @@ class _SetupScreenState extends State<SetupScreen> {
             style: TextStyle(color: VisorTheme.text, fontSize: 15)),
         Switch(
           value: _curved,
-          activeColor: VisorTheme.primary,
+          activeThumbColor: VisorTheme.primary,
           onChanged: (v) => setState(() => _curved = v),
         ),
         const Text('Curved',

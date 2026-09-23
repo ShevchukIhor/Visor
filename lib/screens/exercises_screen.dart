@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/exercises/exercise_painter.dart';
 import '../core/gabor/gabor_patch.dart';
@@ -140,7 +141,9 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
 
   // Session-level randomness + clock/resources for the Gabor exercises.
   late final int _seed = DateTime.now().microsecondsSinceEpoch & 0x7fffffff;
-  final Stopwatch _clock = Stopwatch()..start();
+  /// Drives the orbs' slow cycles. Started by [_start] so the orbs begin
+  /// their first cycle when the drill does, not while the picker is up.
+  final Stopwatch _clock = Stopwatch();
 
   /// Animation loop length: Near-Far runs a slower accommodation cycle.
   int get _loopMs => widget.type == ExerciseType.nearFar ? 16000 : 8000;
@@ -165,20 +168,28 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
   // Near-Far: whether the target is a Gabor sphere or a plain dot.
   bool _nearFarGabor = false;
 
+  /// Set as soon as decoding starts. `_gaborImages` stays empty until the
+  /// first callback fires, so it cannot guard against a second request.
+  bool _gaborRequested = false;
+
   @override
   void initState() {
     super.initState();
+    // Immersive for this screen only — the dashboard and settings need their
+    // system bars back.
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _ctrl = AnimationController(
       vsync: this,
       duration: Duration(milliseconds: _loopMs),
-    )..repeat();
+    );
     if (widget.type == ExerciseType.orbs) {
       _loadGaborImages(count: 1);
     }
   }
 
   void _loadGaborImages({int count = 6}) {
-    if (_gaborImages.isNotEmpty) return;
+    if (_gaborRequested) return;
+    _gaborRequested = true;
     final rng = math.Random(); // a fresh variety of patches per launch
     for (var k = 0; k < count; k++) {
       final patch = GaborPatch(
@@ -211,6 +222,7 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
     for (final img in _gaborImages) {
       img.dispose();
     }
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 
@@ -220,21 +232,25 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
       _finished = false;
       _secondsLeft = _duration;
     });
+    // The animation only needs to run while the drill does; repeating it
+    // behind the duration picker and the finish card just burns battery.
+    _clock
+      ..reset()
+      ..start();
+    _ctrl.repeat();
     _ticker?.cancel();
     _ticker = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) return;
-      setState(() {
-        _secondsLeft--;
-        if (_secondsLeft <= 0) {
-          _secondsLeft = 0;
-          _finish();
-        }
-      });
+      final done = _secondsLeft <= 1;
+      setState(() => _secondsLeft = done ? 0 : _secondsLeft - 1);
+      if (done) _finish();
     });
   }
 
   void _finish() {
     _ticker?.cancel();
+    _ctrl.stop();
+    _clock.stop();
     setState(() {
       _running = false;
       _finished = true;
@@ -244,6 +260,7 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
   /// Exit immediately — works at any point, including mid-exercise.
   void _exit() {
     _ticker?.cancel();
+    _ctrl.stop();
     Navigator.pop(context);
   }
 

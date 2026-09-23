@@ -6,8 +6,10 @@ import 'screens/dashboard_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  // Fullscreen immersive mode: hide status + navigation bars.
-  SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  // Draw behind the system bars but keep them reachable. The training and
+  // exercise screens opt into immersive mode for their own duration; hiding
+  // the bars app-wide also hid them behind time pickers and snackbars.
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   runApp(const VisorApp());
 }
 

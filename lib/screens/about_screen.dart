@@ -6,8 +6,9 @@ import '../core/wallet/wallet_auth.dart';
 
 /// About / Support screen: what Visor does, how it works, privacy, a
 /// medical disclaimer, and the publisher Solana address (copyable).
-/// Tip/donate: a button under the address opens a sheet with token choice
-/// (SKR default), preset amounts, a custom field, and a thank-you screen.
+/// Tip/donate: a button under the address opens a sheet with token choice,
+/// preset amounts, a custom field, and a thank-you screen. The address, the
+/// tokens and their limits all come from the native wallet layer.
 class AboutScreen extends StatefulWidget {
   const AboutScreen({super.key});
 
@@ -16,12 +17,34 @@ class AboutScreen extends StatefulWidget {
 }
 
 class _AboutScreenState extends State<AboutScreen> {
-  static const String _solAddress =
-      "H2gnCCWcAtjgRYVPdCLv37zFdPu4TsdLwfMzvedKXW5w";
+  /// Recipient + limits come from the native wallet layer, which is also what
+  /// builds the transaction — so what is shown here is what actually gets
+  /// paid. No second copy of the address lives in Dart.
+  TipConfig? _config;
+  bool _configFailed = false;
   bool _copied = false;
 
+  @override
+  void initState() {
+    super.initState();
+    _loadConfig();
+  }
+
+  Future<void> _loadConfig() async {
+    try {
+      final c = await WalletAuthService.instance.tipConfig();
+      if (!mounted) return;
+      setState(() => _config = c);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _configFailed = true);
+    }
+  }
+
   Future<void> _copy() async {
-    await Clipboard.setData(const ClipboardData(text: _solAddress));
+    final address = _config?.recipient;
+    if (address == null) return;
+    await Clipboard.setData(ClipboardData(text: address));
     if (!mounted) return;
     setState(() => _copied = true);
     Future.delayed(const Duration(seconds: 2), () {
@@ -30,7 +53,9 @@ class _AboutScreenState extends State<AboutScreen> {
   }
 
   void _openTip() {
-    showTipSheet(context);
+    final config = _config;
+    if (config == null) return;
+    showTipSheet(context, config);
   }
 
   /// A body paragraph with a proper first-line indent and comfortable
@@ -122,9 +147,14 @@ class _AboutScreenState extends State<AboutScreen> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            _solAddress,
-                            style: const TextStyle(
-                              color: VisorTheme.text,
+                            _config?.recipient ??
+                                (_configFailed
+                                    ? "Wallet unavailable on this device"
+                                    : "Loading\u2026"),
+                            style: TextStyle(
+                              color: _config == null
+                                  ? VisorTheme.textDim
+                                  : VisorTheme.text,
                               fontFamily: "monospace",
                               fontSize: 13,
                             ),
@@ -137,14 +167,14 @@ class _AboutScreenState extends State<AboutScreen> {
                       children: [
                         Expanded(
                           child: FilledButton.icon(
-                            onPressed: _openTip,
+                            onPressed: _config == null ? null : _openTip,
                             icon: const Icon(Icons.volunteer_activism, size: 18),
                             label: const Text("Send a tip"),
                           ),
                         ),
                         const SizedBox(width: 8),
                         TextButton(
-                          onPressed: _copy,
+                          onPressed: _config == null ? null : _copy,
                           child: Text(
                             _copied ? "Copied" : "Copy address",
                             style: const TextStyle(fontSize: 13),
@@ -177,32 +207,31 @@ class _AboutScreenState extends State<AboutScreen> {
 /// Bottom sheet: pick a token (SKR default / SOL), an amount (presets or
 /// custom), send, then a thank-you state.
 class _TipSheet extends StatefulWidget {
-  const _TipSheet();
+  final TipConfig config;
+  const _TipSheet({required this.config});
 
   @override
   State<_TipSheet> createState() => _TipSheetState();
 }
 
 class _TipSheetState extends State<_TipSheet> {
-  String _token = "SKR";
-  String _amount = "10";
+  late TipToken _token;
+  late String _amount;
   bool _sending = false;
   bool _done = false;
   String? _error;
-
-  static const _presets = {
-    "SKR": ["5", "10", "50"],
-    "SOL": ["0.01", "0.05", "0.1"],
-  };
-  // Minimum tip amounts (dust/typo guard); no upper cap by design.
-  static const _minLabel = {"SKR": "5", "SOL": "0.001"};
-  static const _min = {"SKR": 5.0, "SOL": 0.001};
 
   final TextEditingController _field = TextEditingController();
 
   @override
   void initState() {
     super.initState();
+    // Tokens and their limits come from the native layer; this sheet keeps no
+    // copy that could disagree with what the transaction enforces.
+    _token = widget.config.tokens.first;
+    // Smallest preset, not the largest: a tip is a thank-you, and the default
+    // should not nudge upward.
+    _amount = _token.presets.first;
     _field.text = _amount;
   }
 
@@ -212,10 +241,10 @@ class _TipSheetState extends State<_TipSheet> {
     super.dispose();
   }
 
-  void _onToken(String t) {
+  void _onToken(TipToken t) {
     setState(() {
       _token = t;
-      _amount = _presets[t]!.last;
+      _amount = t.presets.first;
       _field.text = _amount;
       _field.selection = TextSelection.collapsed(
         affinity: TextAffinity.upstream,
@@ -227,12 +256,16 @@ class _TipSheetState extends State<_TipSheet> {
 
   Future<void> _send() async {
     final amt = double.tryParse(_amount);
-    if (amt == null || amt <= 0) {
+    if (amt == null || !amt.isFinite || amt <= 0) {
       setState(() => _error = "Enter a valid amount");
       return;
     }
-    if (amt < _min[_token]!) {
-      setState(() => _error = "Minimum tip is ${_minLabel[_token]} $_token");
+    if (amt < _token.min) {
+      setState(() => _error = "Minimum tip is ${_token.minLabel} ${_token.symbol}");
+      return;
+    }
+    if (amt > _token.max) {
+      setState(() => _error = "Maximum tip is ${_token.max} ${_token.symbol}");
       return;
     }
     setState(() {
@@ -240,7 +273,7 @@ class _TipSheetState extends State<_TipSheet> {
       _error = null;
     });
     final err = await WalletAuthService.instance.sendTip(
-        token: _token, amountHuman: amt);
+        token: _token.symbol, amountHuman: amt);
     if (!mounted) return;
     setState(() {
       _sending = false;
@@ -323,13 +356,13 @@ class _TipSheetState extends State<_TipSheet> {
         const SizedBox(height: 16),
         Row(
           children: [
-            for (final t in _presets.keys)
+            for (final t in widget.config.tokens)
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: ChoiceChip(
-                    label: Text(t),
-                    selected: _token == t,
+                    label: Text(t.symbol),
+                    selected: _token.symbol == t.symbol,
                     onSelected: (_) => _onToken(t),
                     labelStyle: const TextStyle(fontSize: 14),
                   ),
@@ -339,14 +372,14 @@ class _TipSheetState extends State<_TipSheet> {
         ),
         const SizedBox(height: 14),
         Text(
-          "Amount ($_token)",
+          "Amount (${_token.symbol})",
           style: const TextStyle(color: VisorTheme.textDim, fontSize: 13),
         ),
         const SizedBox(height: 8),
         Wrap(
           spacing: 8,
           children: [
-            for (final p in _presets[_token]!)
+            for (final p in _token.presets)
                ActionChip(
                  label: Text(p),
                  onPressed: () => setState(() {
@@ -369,7 +402,7 @@ class _TipSheetState extends State<_TipSheet> {
           },
           style: const TextStyle(color: VisorTheme.text, fontSize: 16),
           decoration: InputDecoration(
-            hintText: "Custom amount ($_token)",
+            hintText: "Custom amount (${_token.symbol})",
             filled: true,
             fillColor: VisorTheme.bg,
             border: OutlineInputBorder(
@@ -414,11 +447,11 @@ class _TipSheetState extends State<_TipSheet> {
 }
 
 /// Show the tip sheet (full screen, so the Seed Vault deep-link can return).
-void showTipSheet(BuildContext context) {
+void showTipSheet(BuildContext context, TipConfig config) {
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (_) => const _TipSheet(),
+    builder: (_) => _TipSheet(config: config),
   );
 }

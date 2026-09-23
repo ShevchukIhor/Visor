@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/app_info.dart';
 import '../core/db/vision_db.dart';
 import '../core/theme/visor_theme.dart';
 import 'analytics_screen.dart';
@@ -20,6 +21,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _streak = 0;
   int _today = 0;
   double _best = 0;
+  String? _version;
 
   @override
   void initState() {
@@ -31,11 +33,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final streak = await VisionDb.instance.streak();
     final today = await VisionDb.instance.sessionsOnDay(DateTime.now());
     final best = await VisionDb.instance.bestScore();
+    final version = await AppInfo.version();
     if (!mounted) return;
     setState(() {
       _streak = streak;
       _today = today;
       _best = best;
+      _version = version;
     });
   }
 
@@ -122,19 +126,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 child: Text(
                   'Next break: train daily to build your streak',
                   style: TextStyle(
-                      color: VisorTheme.textDim.withOpacity(0.7),
+                      color: VisorTheme.textDim.withValues(alpha: 0.7),
                       fontSize: 12),
                 ),
               ),
               const SizedBox(height: 6),
-              Center(
-                child: Text(
-                  'Version 0.3.0',
-                  style: TextStyle(
-                      color: VisorTheme.textDim.withOpacity(0.5),
-                      fontSize: 11),
+              if (_version != null)
+                Center(
+                  child: Text(
+                    'Version $_version',
+                    style: TextStyle(
+                        color: VisorTheme.textDim.withValues(alpha: 0.5),
+                        fontSize: 11),
+                  ),
                 ),
-              ),
             ],
           ),
         ),

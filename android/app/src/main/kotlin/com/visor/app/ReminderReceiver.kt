@@ -16,6 +16,9 @@ import android.os.Build
  *
  * Reschedules itself for the next day after firing (exact alarms are
  * one-shot), so the daily cadence continues without the app being opened.
+ *
+ * [ACTION_TEST] is a separate action (and a separate PendingIntent slot) so
+ * firing a test notification never disturbs the armed daily alarm.
  */
 class ReminderReceiver : BroadcastReceiver() {
 
@@ -24,6 +27,16 @@ class ReminderReceiver : BroadcastReceiver() {
       ACTION_REMINDER -> {
         handleReminder(context)
         ReminderScheduler.scheduleNextDay(context)
+      }
+      ACTION_TEST -> {
+        // A test fires unconditionally — the point is to verify the pipeline,
+        // not to respect the "already trained" rule. It also must NOT
+        // reschedule anything: the daily alarm is a different PendingIntent.
+        showNotification(
+          context,
+          "Visor test notification",
+          "Notifications are working. Your daily reminder is unaffected.",
+        )
       }
     }
   }
@@ -37,7 +50,6 @@ class ReminderReceiver : BroadcastReceiver() {
     )
   }
 
-  @Suppress("DEPRECATION")
   private fun showNotification(context: Context, title: String, text: String) {
     val channelId = "visor_reminder"
     val nm = context.getSystemService(Context.NOTIFICATION_SERVICE)
@@ -69,7 +81,7 @@ class ReminderReceiver : BroadcastReceiver() {
     }
 
     val notification = builder
-      .setSmallIcon(android.R.drawable.ic_dialog_info)
+      .setSmallIcon(R.drawable.ic_notification)
       .setContentTitle(title)
       .setContentText(text)
       .setContentIntent(contentPi)
@@ -77,8 +89,7 @@ class ReminderReceiver : BroadcastReceiver() {
       .build()
 
     try {
-      @Suppress("DEPRECATION")
-      nm.notify(1001, notification)
+      nm.notify(NOTIFICATION_ID, notification)
     } catch (_: SecurityException) {
       // POST_NOTIFICATIONS not granted (API 33+) — silently skip.
     }
@@ -86,5 +97,7 @@ class ReminderReceiver : BroadcastReceiver() {
 
   companion object {
     const val ACTION_REMINDER = "com.visor.app.ACTION_REMINDER"
+    const val ACTION_TEST = "com.visor.app.ACTION_TEST"
+    private const val NOTIFICATION_ID = 1001
   }
 }

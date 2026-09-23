@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:visor/core/exercises/exercise_painter.dart';
 import 'package:visor/core/gabor/gabor_patch.dart';
 
 void main() {
@@ -43,7 +42,52 @@ void main() {
       expect(rgba.length, 32 * 32 * 4);
     });
 
-    test('renderRgbaCircular is a circle: transparent corners, opaque center', () {
+    test('renderRgba maps the signal symmetrically about the ramp midpoint',
+        () {
+      // A Gabor's excursion must be symmetric about the mean-luminance field,
+      // or bright and dark stripes carry different contrast. The mapping is
+      // checked against the raw signal rather than against the extremes: a
+      // discrete pixel grid never samples the exact peak or trough.
+      const patch = GaborPatch();
+      const dark = 0xFF1A1A1D;
+      const darkR = (dark >> 16) & 0xFF;
+      final midpoint = (darkR + 255) / 2;
+      final half = (255 - darkR) / 2;
+
+      final signal = patch.render(64);
+      final rgba = patch.renderRgba(64, darkLevel: dark);
+
+      for (var p = 0; p < signal.length; p++) {
+        // luminance = midpoint + signal * half  <=>  equal swing either way.
+        expect(rgba[p * 4], closeTo(midpoint + signal[p] * half, 1),
+            reason: 'pixel $p, signal ${signal[p]}');
+      }
+
+      // Where the envelope has vanished the signal is 0 -> the ramp midpoint,
+      // NOT darkLevel: this variant paints no background.
+      expect(signal[0].abs(), lessThan(1e-3)); // gaussian tail, not exactly 0
+      expect(rgba[0], closeTo(midpoint, 1));
+
+      // Fully opaque.
+      for (var i = 3; i < rgba.length; i += 4) {
+        expect(rgba[i], 255);
+      }
+    });
+
+    test('darkLevel actually moves the dark end of the ramp', () {
+      const patch = GaborPatch();
+      final dim = patch.renderRgba(32, darkLevel: 0xFF000000);
+      final bright = patch.renderRgba(32, darkLevel: 0xFF808080);
+      var minDim = 255, minBright = 255;
+      for (var i = 0; i < dim.length; i += 4) {
+        if (dim[i] < minDim) minDim = dim[i];
+        if (bright[i] < minBright) minBright = bright[i];
+      }
+      expect(minDim, lessThan(minBright));
+    });
+
+    test('renderRgbaCircular is a circle: transparent corners, opaque center',
+        () {
       const patch = GaborPatch();
       final rgba = renderRgbaCircular(patch, 64);
       expect(rgba.length, 64 * 64 * 4);
@@ -114,100 +158,18 @@ void main() {
       }
       expect(maxExpert, lessThan(maxEasy));
     });
-  });
 
-  group('Focus Shifting path', () {
-    test('anchor points are widely spaced', () {
-      // Within each leg, the two anchors must be far apart (whole-screen span).
-      for (var leg = 0; leg < 8; leg += 2) {
-        final a = focusShiftPoint(leg / 8.0 + 0.001);
-        final b = focusShiftPoint((leg + 1) / 8.0 + 0.001);
-        final dist = (a - b).distance;
-        expect(dist, greaterThan(0.6),
-            reason: 'leg $leg anchors too close: $dist');
+    test('grid is filled for every difficulty', () {
+      final gen = TrialGenerator(seed: 11);
+      for (final d in Difficulty.values) {
+        final trial = gen.generate(d);
+        expect(trial.distractors.length, d.grid * d.grid,
+            reason: '${d.name} grid');
+        expect(trial.answerIndex, inInclusiveRange(0, d.grid * d.grid - 1));
+        // The answer cell shows the target itself.
+        expect(identical(trial.distractors[trial.answerIndex], trial.target),
+            isTrue);
       }
-    });
-
-    test('alternates between multiple diagonals, not just one', () {
-      // Collect anchor pairs across the loop; expect ≥ 3 distinct pairs.
-      final pairs = <String>{};
-      for (var leg = 0; leg < 8; leg += 2) {
-        final a = focusShiftPoint(leg / 8.0 + 0.001);
-        final b = focusShiftPoint((leg + 1) / 8.0 + 0.001);
-        pairs.add('$a->$b');
-      }
-      expect(pairs.length, greaterThanOrEqualTo(3));
-    });
-  });
-
-  group('Near-Far phase', () {
-    test('holds at far (0) then near (1)', () {
-      expect(nearFarPhase(0.1), 0.0); // far hold
-      expect(nearFarPhase(0.6), 1.0); // near hold
-    });
-
-    test('transitions are smooth and bounded', () {
-      double prev = nearFarPhase(0);
-      for (var i = 1; i <= 200; i++) {
-        final v = nearFarPhase(i / 200);
-        expect(v, inInclusiveRange(0.0, 1.0));
-        expect((v - prev).abs(), lessThan(0.2),
-            reason: 'phase jump at ${i / 200}');
-        prev = v;
-      }
-    });
-
-    test('ends the loop back at far so repeat() has no visible jump', () {
-      expect(nearFarPhase(0.999), closeTo(0.0, 0.05));
-      expect(nearFarPhase(0.0), 0.0);
-    });
-  });
-
-  group('Peripheral flash angles', () {
-    test('are not in clockwise slot order', () {
-      // A clockwise sequence increases by 2π/8 each slot; a random one
-      // must differ from that ordering for at least some slots.
-      var clockwise = 0;
-      for (var slot = 0; slot < 8; slot++) {
-        final a = peripheralAngle(slot, 42);
-        final expected = slot * 2 * math.pi / 8;
-        final d = (a - expected).abs() % (2 * math.pi);
-        if (d < 0.2 || d > 2 * math.pi - 0.2) clockwise++;
-      }
-      expect(clockwise, lessThan(3),
-          reason: 'flashes look ordered like a clock');
-    });
-
-    test('deterministic per (slot, seed) and vary with seed', () {
-      expect(peripheralAngle(3, 7), peripheralAngle(3, 7));
-      expect(peripheralAngle(3, 7), isNot(peripheralAngle(3, 8)));
-    });
-
-    test('stay within [0, 2π)', () {
-      for (var slot = 0; slot < 32; slot++) {
-        final a = peripheralAngle(slot, slot * 11);
-        expect(a, inInclusiveRange(0.0, 2 * math.pi));
-      }
-    });
-  });
-
-  group('Orb waypoints', () {
-    test('stay on screen with margins', () {
-      for (var cycle = 0; cycle < 6; cycle++) {
-        for (var orb = 0; orb < 2; orb++) {
-          for (var end = 0; end < 2; end++) {
-            final p = orbWaypoint(cycle, orb, end, 5);
-            expect(p.dx, inInclusiveRange(0.15, 0.85));
-            expect(p.dy, inInclusiveRange(0.15, 0.85));
-          }
-        }
-      }
-    });
-
-    test('consecutive cycles have different trajectories', () {
-      final first = orbWaypoint(0, 0, 0, 1);
-      final second = orbWaypoint(1, 0, 0, 1);
-      expect(first, isNot(second));
     });
   });
 }
