@@ -129,7 +129,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               const SizedBox(height: 6),
               Center(
                 child: Text(
-                  'Version 0.2.0',
+                  'Version 0.3.0',
                   style: TextStyle(
                       color: VisorTheme.textDim.withOpacity(0.5),
                       fontSize: 11),

@@ -23,16 +23,18 @@ detail rather than guessing random noise.
 Four difficulty levels: Easy (3x3) up to Expert (6x6), each tightening
 the discrimination threshold the way neurophysiology research does.
 
-Eye Exercises: eight guided movements — convergence, near-far cycles,
-focus shifting, saccadic jumps, smooth pursuit, figure-8 tracking,
-peripheral awareness, and 3D floating orbs for tired-eye recovery.
-Every exercise runs on a set timer (30/60/120s), not endlessly.
+Eye Exercises: eight guided movements — convergence, near-far focus
+cycles with a breathing rhythm, wide focus shifting, saccadic jumps,
+smooth pursuit, figure-8 tracking, peripheral awareness, and drifting
+Gabor orbs for tired-eye recovery. Every exercise runs on a set timer
+(30/60/120s), not endlessly.
 
 Progress: local streak, today-counter, and best score, all stored
 on-device in SQLite. Your data never leaves the phone.
 
-Wallet: optionally connect via Seed Vault to link your training profile
-to a Solana wallet. Training works fully offline without it.
+Tipping: if the app helped your eyes, an optional tip (SOL or SKR) can
+be sent straight from the About screen via Seed Vault — no account
+needed, the wallet only approves the one transaction you choose.
 
 Daily reminders fire exactly once, only on days you haven't trained —
 never after a completed session. Alarms survive reboot.
@@ -54,11 +56,11 @@ offline. No ads, no trackers, no accounts required.
 | Headline (<= 50) | Train your eyes, not just your streak |
 | Languages | English |
 | Countries | All countries |
-| App Website | https://github.com/env5150/visor |
+| App Website | https://github.com/ShevchukIhor/Visor |
 | Contact Email | env5150@proton.me |
 | Support Email | env5150@proton.me |
-| Terms of Use | https://github.com/env5150/visor/blob/main/TERMS.md |
-| Privacy Policy | https://github.com/env5150/visor/blob/main/PRIVACY.md |
+| Terms of Use | https://github.com/ShevchukIhor/Visor/blob/main/TERMS.md |
+| Privacy Policy | https://github.com/ShevchukIhor/Visor/blob/main/PRIVACY.md |
 
 ## Category (категорія у dApp Store)
 Lifestyle
