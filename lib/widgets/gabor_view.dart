@@ -11,6 +11,10 @@ import '../core/gabor/gabor_patch.dart';
 class GaborView extends StatefulWidget {
   final GaborPatch patch;
   final int size;
+
+  /// Colour of the surrounding surface. Used both for the pre-decode
+  /// placeholder and as the dark end of the patch's luminance ramp, so the
+  /// darkest stripes meet the page instead of banding against it.
   final int background;
 
   const GaborView({
@@ -39,7 +43,8 @@ class _GaborViewState extends State<GaborView> {
         widget.background);
     if (_image != null && _lastSignature == sig) return;
     _lastSignature = sig;
-    final rgba = widget.patch.renderRgba(widget.size, bg: widget.background);
+    final rgba =
+        widget.patch.renderRgba(widget.size, darkLevel: widget.background);
     ui.decodeImageFromPixels(
       rgba,
       widget.size,

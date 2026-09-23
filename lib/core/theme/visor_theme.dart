@@ -16,7 +16,6 @@ class VisorTheme {
   static const Color accent = Color(0xFFFF9B3D); // streak/today accent
   static const Color success = Color(0xFF3DDC84);
   static const Color danger = Color(0xFFFF5A5F);
-  static const Color pro = Color(0xFF9A6BFF);
 
   static ThemeData get theme => ThemeData(
         brightness: Brightness.dark,

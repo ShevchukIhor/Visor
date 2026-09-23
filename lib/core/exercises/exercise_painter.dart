@@ -187,7 +187,7 @@ class ExercisePainter extends CustomPainter {
     // Default: smooth moving dot with a faint guidance ring in the center.
     _dot(canvas, center, size.width * 0.03, color);
     final ref = Paint()
-      ..color = color.withOpacity(0.1)
+      ..color = color.withValues(alpha: 0.1)
       ..strokeWidth = 1
       ..style = PaintingStyle.stroke;
     canvas.drawCircle(
@@ -207,7 +207,7 @@ class ExercisePainter extends CustomPainter {
 
     // Soft halo that blooms as the target comes "near".
     final halo = Paint()
-      ..color = color.withOpacity(0.10 + 0.18 * n)
+      ..color = color.withValues(alpha: 0.10 + 0.18 * n)
       ..maskFilter = MaskFilter.blur(BlurStyle.normal, 12 + 36 * n);
     canvas.drawCircle(Offset(cx, cy), r * 1.5, halo);
 
@@ -218,7 +218,7 @@ class ExercisePainter extends CustomPainter {
       final rect = Rect.fromCircle(center: Offset(cx, cy), radius: r);
       final paint = Paint()
         ..filterQuality = FilterQuality.high
-        ..color = Colors.white.withOpacity(0.95 - 0.25 * n);
+        ..color = Colors.white.withValues(alpha: 0.95 - 0.25 * n);
       canvas.drawImageRect(
         img,
         Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble()),
@@ -227,14 +227,14 @@ class ExercisePainter extends CustomPainter {
       );
     } else {
       // Main disc: crisp when far, softer when near.
-      _dot(canvas, Offset(cx, cy), r, color.withOpacity(0.95 - 0.30 * n));
+      _dot(canvas, Offset(cx, cy), r, color.withValues(alpha: 0.95 - 0.30 * n));
     }
 
     _label(
       canvas,
       size,
       n < 0.5 ? 'FAR' : 'NEAR',
-      color.withOpacity(0.55),
+      color.withValues(alpha: 0.55),
     );
   }
 
@@ -250,7 +250,7 @@ class ExercisePainter extends CustomPainter {
     );
     final flashPhase = progress * 8 - slot; // blink within slot
     if (flashPhase < 0.5) {
-      _dot(canvas, flashPos, 8, color.withOpacity(0.9));
+      _dot(canvas, flashPos, 8, color.withValues(alpha: 0.9));
     }
   }
 
@@ -287,7 +287,7 @@ class ExercisePainter extends CustomPainter {
         final rect = Rect.fromCircle(center: pos, radius: r);
         final paint = Paint()
           ..filterQuality = FilterQuality.high
-          ..color = Colors.white.withOpacity(0.95 * alpha);
+          ..color = Colors.white.withValues(alpha: 0.95 * alpha);
         canvas.save();
         // Slow gentle rotation while drifting.
         canvas.translate(pos.dx, pos.dy);
@@ -303,10 +303,10 @@ class ExercisePainter extends CustomPainter {
       } else {
         // Fallback soft orb until the Gabor image has decoded.
         final halo = Paint()
-          ..color = color.withOpacity(0.15 * alpha)
+          ..color = color.withValues(alpha: 0.15 * alpha)
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18);
         canvas.drawCircle(pos, r * 1.6, halo);
-        _dot(canvas, pos, r, color.withOpacity(0.85 * alpha));
+        _dot(canvas, pos, r, color.withValues(alpha: 0.85 * alpha));
       }
     }
   }

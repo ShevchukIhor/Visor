@@ -57,19 +57,54 @@ class VisionSession {
       );
 }
 
+/// Local-date key (`YYYY-MM-DD`), matching SQLite's
+/// `date(started_at/1000, 'unixepoch', 'localtime')`.
+String dateKey(DateTime dt) =>
+    '${dt.year.toString().padLeft(4, '0')}-'
+    '${dt.month.toString().padLeft(2, '0')}-'
+    '${dt.day.toString().padLeft(2, '0')}';
+
+/// Consecutive days ending at [now] (or at yesterday, if today has no session
+/// yet) that appear in [days].
+///
+/// Pure so the calendar edge cases — an empty history, a gap, a streak that is
+/// still alive because today simply has not happened yet — are testable
+/// without a database.
+int computeStreak(Set<String> days, DateTime now) {
+  // Calendar arithmetic, not `subtract(Duration(days: 1))`: on a DST boundary
+  // a 24-hour step lands on the same local date (or skips one), which would
+  // silently break or double-count a streak.
+  DateTime previousDay(DateTime d) => DateTime(d.year, d.month, d.day - 1);
+
+  var cursor = DateTime(now.year, now.month, now.day);
+  if (!days.contains(dateKey(cursor))) {
+    cursor = previousDay(cursor);
+  }
+  var streak = 0;
+  while (days.contains(dateKey(cursor))) {
+    streak++;
+    cursor = previousDay(cursor);
+  }
+  return streak;
+}
+
 /// Database access for vision sessions and the reminder settings row.
 class VisionDb {
   VisionDb._();
   static final VisionDb instance = VisionDb._();
 
-  Database? _db;
+  /// The *future* is cached, not the resolved handle: two callers racing on
+  /// the first access would otherwise both get past a `_db == null` check and
+  /// open the database twice.
+  Future<Database>? _dbFuture;
 
-  Future<Database> get db async {
-    if (_db != null) return _db!;
+  Future<Database> get db => _dbFuture ??= _open();
+
+  Future<Database> _open() async {
     final path = p.join(await getDatabasesPath(), 'visor.db');
-    _db = await openDatabase(
+    return openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: (d, v) async {
         await d.execute('''
           CREATE TABLE vision_sessions (
@@ -97,27 +132,16 @@ class VisionDb {
         ''');
         await d.insert('reminder',
             {'id': 1, 'enabled': 0, 'hour': 21, 'minute': 0});
-        await _createAccountTable(d);
       },
       onUpgrade: (d, oldV, newV) async {
-        // v1 -> v2: add the `account` table (Seed Vault wallet).
-        if (oldV < 2) {
-          await _createAccountTable(d);
+        // v2 added an `account` table for a Seed Vault wallet card that was
+        // removed from the UI; v3 drops it so no wallet address lingers on
+        // disk. Tipping needs no stored account.
+        if (oldV < 3) {
+          await d.execute('DROP TABLE IF EXISTS account');
         }
       },
     );
-    return _db!;
-  }
-
-  Future<void> _createAccountTable(Database d) async {
-    await d.execute('''
-      CREATE TABLE IF NOT EXISTS account (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
-        address TEXT NOT NULL,
-        label TEXT,
-        created_at INTEGER NOT NULL
-      )
-    ''');
   }
 
   Future<int> insertSession(VisionSession s) async {
@@ -144,9 +168,6 @@ class VisionDb {
     );
     return (rows.first['c'] as int?) ?? 0;
   }
-
-  Future<bool> hasSessionOnDay(DateTime day) async =>
-      (await sessionsOnDay(day)) > 0;
 
   // --- Reminder settings ---
   Future<Map<String, Object?>> getReminder() async {
@@ -184,53 +205,7 @@ class VisionDb {
       'FROM vision_sessions',
     );
     final days = rows.map((r) => r['day'] as String).toSet();
-    var streak = 0;
-    var cursor = DateTime.now();
-    // If today has no session, start counting from yesterday.
-    if (!days.contains(_dateKey(cursor))) {
-      cursor = cursor.subtract(const Duration(days: 1));
-    }
-    while (days.contains(_dateKey(cursor))) {
-      streak++;
-      cursor = cursor.subtract(const Duration(days: 1));
-    }
-    return streak;
-  }
-
-  String _dateKey(DateTime dt) =>
-      '${dt.year.toString().padLeft(4, '0')}-'
-      '${dt.month.toString().padLeft(2, '0')}-'
-      '${dt.day.toString().padLeft(2, '0')}';
-
-  // -- Account (Seed Vault wallet) --
-
-  /// Returns the stored account (address + optional label), or null.
-  Future<Map<String, Object?>?> getAccount() async {
-    final d = await db;
-    final rows = await d.query('account', where: 'id = 1');
-    if (rows.isEmpty) return null;
-    return rows.first;
-  }
-
-  /// Persist the authorized wallet address (upsert single row).
-  Future<void> setAccount(String address, String? label) async {
-    final d = await db;
-    await d.insert(
-      'account',
-      {
-        'id': 1,
-        'address': address,
-        'label': label,
-        'created_at': DateTime.now().millisecondsSinceEpoch,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-  }
-
-  /// Remove the stored account (logout/disconnect).
-  Future<void> clearAccount() async {
-    final d = await db;
-    await d.delete('account', where: 'id = 1');
+    return computeStreak(days, DateTime.now());
   }
 
   /// Composite score for a finished session.

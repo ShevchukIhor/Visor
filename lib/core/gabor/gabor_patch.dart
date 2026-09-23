@@ -81,23 +81,32 @@ class GaborPatch {
     return out;
   }
 
-  /// Render to a displayable grayscale image (Image-compatible RGBA bytes).
+  /// Render to a displayable opaque image (Image-compatible RGBA bytes).
   ///
-  /// Maps [-1,1] → dark/light around a mid-gray background so the patch is
-  /// actually visible on screen.
-  Uint8List renderRgba(int size, {int bg = 0xFF1A1A1D}) {
+  /// The grating spans a linear luminance ramp from [darkLevel] (where the
+  /// signal is -1) to white (where it is +1), so the excursion is symmetric
+  /// about the ramp's midpoint — the mean-luminance field a Gabor stimulus
+  /// needs. [darkLevel] is an ARGB int whose channels set the dark end of the
+  /// ramp; matching it to the surrounding page colour makes the darkest
+  /// stripes blend into the background.
+  ///
+  /// NOTE: this does NOT paint a background. Where the Gaussian envelope has
+  /// faded to zero the signal is 0, which maps to the ramp midpoint — roughly
+  /// mid-grey — not to [darkLevel]. The result is an opaque grey square by
+  /// design; [renderRgbaCircular] is the variant that fades to transparent.
+  Uint8List renderRgba(int size, {int darkLevel = 0xFF1A1A1D}) {
     final g = render(size);
     final out = Uint8List(size * size * 4);
-    final bgR = (bg >> 16) & 0xFF;
-    final bgG = (bg >> 8) & 0xFF;
-    final bgB = bg & 0xFF;
+    final darkR = (darkLevel >> 16) & 0xFF;
+    final darkG = (darkLevel >> 8) & 0xFF;
+    final darkB = darkLevel & 0xFF;
     var i = 0;
     for (var p = 0; p < size * size; p++) {
       final v = g[p]; // in [-1, 1]
       final n = (v + 1.0) / 2.0; // [0, 1]
-      out[i++] = (bgR + (255 - bgR) * n).round().clamp(0, 255).toInt(); // R
-      out[i++] = (bgG + (255 - bgG) * n).round().clamp(0, 255).toInt(); // G
-      out[i++] = (bgB + (255 - bgB) * n).round().clamp(0, 255).toInt(); // B
+      out[i++] = (darkR + (255 - darkR) * n).round().clamp(0, 255).toInt(); // R
+      out[i++] = (darkG + (255 - darkG) * n).round().clamp(0, 255).toInt(); // G
+      out[i++] = (darkB + (255 - darkB) * n).round().clamp(0, 255).toInt(); // B
       out[i++] = 255; // A
     }
     return out;

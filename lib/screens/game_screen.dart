@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/db/vision_db.dart';
 import '../core/gabor/gabor_patch.dart';
@@ -36,12 +37,17 @@ class _GameScreenState extends State<GameScreen>
   Timer? _timer;
   DateTime? _startedAt;
   bool _saved = false;
+  bool _saveError = false;
 
   int get _grid => widget.setup.difficulty.grid;
 
   @override
   void initState() {
     super.initState();
+    // Hide the system bars for the duration of the session only — a bright
+    // status bar next to a Gabor grid is exactly the distraction the drill
+    // is trying to remove.
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _gen = TrialGenerator(curved: widget.setup.curved);
     _trial = _gen.generate(widget.setup.difficulty);
     _secondsLeft = widget.setup.durationS;
@@ -52,13 +58,9 @@ class _GameScreenState extends State<GameScreen>
   void _startTimer() {
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) return;
-      setState(() {
-        _secondsLeft--;
-        if (_secondsLeft <= 0) {
-          _secondsLeft = 0;
-          _finish();
-        }
-      });
+      final done = _secondsLeft <= 1;
+      setState(() => _secondsLeft = done ? 0 : _secondsLeft - 1);
+      if (done) _finish();
     });
   }
 
@@ -76,19 +78,29 @@ class _GameScreenState extends State<GameScreen>
       total: _total,
       d: widget.setup.difficulty,
     );
-    await VisionDb.instance.insertSession(VisionSession(
-      id: 0,
-      startedAt: _startedAt ?? DateTime.now(),
-      durationS: widget.setup.durationS,
-      difficulty: widget.setup.difficulty.name,
-      grid: _grid,
-      pattern: widget.setup.curved ? 'curved' : 'straight',
-      correct: _correct,
-      total: _total,
-      score: score,
-    ));
-    // Tell the native reminder layer we trained today.
-    await ReminderService.markTrainedToday();
+    try {
+      await VisionDb.instance.insertSession(VisionSession(
+        id: 0,
+        startedAt: _startedAt ?? DateTime.now(),
+        durationS: widget.setup.durationS,
+        difficulty: widget.setup.difficulty.name,
+        grid: _grid,
+        pattern: widget.setup.curved ? 'curved' : 'straight',
+        correct: _correct,
+        total: _total,
+        score: score,
+      ));
+      // Tell the native reminder layer we trained today.
+      await ReminderService.markTrainedToday();
+    } catch (e) {
+      // Losing a session silently while the screen says "complete" is worse
+      // than an ugly message: the streak and the chart would disagree with
+      // what the user just did.
+      debugPrint('Failed to save session: $e');
+      _saved = false;
+      if (!mounted) return;
+      setState(() => _saveError = true);
+    }
   }
 
   void _tap(int index) {
@@ -115,6 +127,7 @@ class _GameScreenState extends State<GameScreen>
   @override
   void dispose() {
     _timer?.cancel();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     super.dispose();
   }
 
@@ -149,7 +162,7 @@ class _GameScreenState extends State<GameScreen>
           ),
           const SizedBox(width: 12),
           Text(
-            '${mmss(_secondsLeft)}',
+            mmss(_secondsLeft),
             style: const TextStyle(
               color: VisorTheme.text,
               fontSize: 26,
@@ -265,6 +278,23 @@ class _GameScreenState extends State<GameScreen>
               style:
                   const TextStyle(color: VisorTheme.textDim, fontSize: 16),
             ),
+            if (_saveError) ...[
+              const SizedBox(height: 16),
+              const Text(
+                'Could not save this session — your streak and history may '
+                'not include it.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: VisorTheme.danger, fontSize: 13),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: () {
+                  setState(() => _saveError = false);
+                  _save();
+                },
+                child: const Text('Retry save'),
+              ),
+            ],
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,

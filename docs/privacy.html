@@ -47,20 +47,26 @@
 </header>
 
 <main class="wrap">
-  <p style="color:var(--dim);font-size:13px;margin-bottom:20px;">Effective: September 2, 2026</p>
+  <p style="color:var(--dim);font-size:13px;margin-bottom:20px;">Effective: September 23, 2026</p>
 
   <h2>What we collect</h2>
   <p><strong>Nothing.</strong> Visor does not collect, transmit, or store any personal information.</p>
   <p>No accounts, no login, no email, no identifiers. No analytics, no tracking, no telemetry, no crash reporters. No third-party SDKs that collect data.</p>
 
   <h2>Where your data lives</h2>
-  <p>All app data — your training sessions, streak, best score, settings, and an optional Solana wallet association — is stored <strong>locally</strong> in on-device SQLite. It never leaves your device and is never uploaded to any server.</p>
+  <p>All app data — your training sessions, streak, best score, and reminder settings — is stored <strong>locally</strong> in on-device SQLite. It never leaves your device and is never uploaded to any server. Visor does not store a wallet address at all.</p>
+  <p>Android's Auto Backup is <strong>disabled</strong> for Visor, so this data is not copied to your Google Drive or transferred to a new device.</p>
 
-  <h2>Optional Seed Vault connection</h2>
-  <p>If you choose to connect a Solana wallet via Seed Vault, the connection is established through the on-device Mobile Wallet Adapter. We do not receive, store, or transmit your keys, seed phrase, or wallet contents. A wallet public address is shown only to identify the connection locally.</p>
+  <h2>Optional tipping via Seed Vault</h2>
+  <p>Tipping is entirely optional. Visor never handles your keys, seed phrase, or wallet contents: the transaction is built on your device and handed to Seed Vault (the on-device Mobile Wallet Adapter), where you review and approve it yourself.</p>
+
+  <h2>Network access</h2>
+  <p>Visor makes network requests in exactly one situation: <strong>when you send a tip.</strong> To build a valid Solana transaction, the app queries public Solana RPC endpoints — currently <code>api.mainnet-beta.solana.com</code> and <code>solana-rpc.publicnode.com</code> — for a recent blockhash and to check whether your wallet holds enough to cover the tip.</p>
+  <p>Those requests include <strong>your wallet's public address</strong>, which the RPC provider can see along with your IP address, as with any Solana wallet or block explorer. We do not operate these endpoints and do not receive the requests ourselves. Public addresses and transactions on Solana are public by nature.</p>
+  <p>If you never send a tip, Visor makes no network requests at all.</p>
 
   <h2>Third parties</h2>
-  <p>Visor has no third-party data sharing because there is no data to share.</p>
+  <p>Visor contains no analytics, advertising, or tracking SDKs. The only third parties that ever see anything are the public Solana RPC endpoints described above, and only when you choose to tip.</p>
 
   <h2>Children</h2>
   <p>Visor does not collect data from anyone, including children.</p>

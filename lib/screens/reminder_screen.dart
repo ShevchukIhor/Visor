@@ -12,7 +12,8 @@ class ReminderScreen extends StatefulWidget {
   State<ReminderScreen> createState() => _ReminderScreenState();
 }
 
-class _ReminderScreenState extends State<ReminderScreen> {
+class _ReminderScreenState extends State<ReminderScreen>
+    with WidgetsBindingObserver {
   bool _enabled = false;
   int _hour = 21;
   int _minute = 0;
@@ -20,11 +21,26 @@ class _ReminderScreenState extends State<ReminderScreen> {
   bool _scheduled = false;
   bool _testing = false;
   bool _hasPermission = true;
+  bool _canScheduleExact = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Both permissions can be changed from system settings while this screen
+  /// sits in the background, so re-read them on the way back in.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _load();
   }
 
   Future<void> _load() async {
@@ -32,6 +48,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
       final r = await VisionDb.instance.getReminder();
       final hasPerm = await ReminderService.hasNotificationPermission();
       final scheduled = await ReminderService.hasSchedule();
+      final exact = await ReminderService.canScheduleExactAlarms();
       if (!mounted) return;
       setState(() {
         _enabled = (r['enabled'] as int?) == 1;
@@ -39,6 +56,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
         _minute = (r['minute'] as int?) ?? 0;
         _hasPermission = hasPerm;
         _scheduled = scheduled;
+        _canScheduleExact = exact;
         _loaded = true;
       });
     } catch (_) {
@@ -48,6 +66,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
         _loaded = true;
         _hasPermission = true;
         _scheduled = false;
+        _canScheduleExact = true;
       });
     }
   }
@@ -67,10 +86,12 @@ class _ReminderScreenState extends State<ReminderScreen> {
 
   Future<void> _toggle(bool v) async {
     setState(() => _enabled = v);
-    // Ask for notification permission when enabling (API 33+).
+    // Ask for notification permission when enabling (API 33+). The call
+    // resolves only after the user answers, so this is the real outcome.
     if (v && !_hasPermission) {
-      await ReminderService.requestNotificationPermission();
-      _hasPermission = await ReminderService.hasNotificationPermission();
+      final granted = await ReminderService.requestNotificationPermission();
+      if (!mounted) return;
+      setState(() => _hasPermission = granted);
     }
     await _save();
   }
@@ -78,12 +99,32 @@ class _ReminderScreenState extends State<ReminderScreen> {
   Future<void> _save() async {
     final ok = await ReminderService.schedule(
         enabled: _enabled, hour: _hour, minute: _minute);
+    final exact = await ReminderService.canScheduleExactAlarms();
     if (!mounted) return;
-    setState(() => _scheduled = ok);
-    if (ok) {
+    setState(() {
+      _scheduled = ok && _enabled;
+      _canScheduleExact = exact;
+    });
+    if (!_enabled) {
+      _snack('Reminder turned off');
+      return;
+    }
+    if (!ok) {
+      _snack('Could not schedule the reminder');
+      return;
+    }
+    if (exact) {
       _snack('Reminder scheduled for ${_fmt(_hour, _minute)}');
     } else {
-      _snack('Could not schedule (exact-alarm permission missing)');
+      // The alarm is armed, just not exact — say so and offer the fix rather
+      // than leaving the user to wonder why it drifts.
+      _snack(
+        'Scheduled for ${_fmt(_hour, _minute)}, but timing may drift',
+        action: SnackBarAction(
+          label: 'Fix',
+          onPressed: ReminderService.openExactAlarmSettings,
+        ),
+      );
     }
   }
 
@@ -98,11 +139,12 @@ class _ReminderScreenState extends State<ReminderScreen> {
   String _fmt(int h, int m) =>
       '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
 
-  void _snack(String msg) {
+  void _snack(String msg, {SnackBarAction? action}) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(
         content: Text(msg),
+        action: action,
         duration: const Duration(seconds: 3),
       ));
   }
@@ -144,7 +186,7 @@ class _ReminderScreenState extends State<ReminderScreen> {
                         const Spacer(),
                         Switch(
                           value: _enabled,
-                          activeColor: VisorTheme.primary,
+                          activeThumbColor: VisorTheme.primary,
                           onChanged: _toggle,
                         ),
                       ],
@@ -155,6 +197,25 @@ class _ReminderScreenState extends State<ReminderScreen> {
                     const Text(
                       'Notifications are disabled for Visor. Enable them in Android settings to receive reminders.',
                       style: TextStyle(color: VisorTheme.danger, fontSize: 13),
+                    ),
+                  ],
+                  if (!_canScheduleExact) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Android is not allowing exact alarms, so the reminder may arrive late.',
+                            style: TextStyle(
+                                color: VisorTheme.accent, fontSize: 13),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: ReminderService.openExactAlarmSettings,
+                          child: const Text('Allow'),
+                        ),
+                      ],
                     ),
                   ],
                   const SizedBox(height: 12),

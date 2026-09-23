@@ -6,18 +6,20 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
-import androidx.activity.ComponentActivity
+import android.provider.Settings
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.util.Calendar
 
 /**
- * Visor host activity. Exposes three MethodChannels:
+ * Visor host activity. Exposes four MethodChannels:
  *  - "visor/reminder" — daily training reminder via AlarmManager (exact).
- *  - "visor/wallet"   — Seed Vault (MWA) authorize.
- *  - "visor/notify"   — request POST_NOTIFICATIONS permission + test fire.
+ *  - "visor/wallet"   — Seed Vault (MWA) tipping.
+ *  - "visor/notify"   — notification + exact-alarm permission plumbing.
+ *  - "visor/app"      — app metadata (version), so the UI never hardcodes it.
  *
  * Uses FlutterFragmentActivity (a ComponentActivity) because the Mobile Wallet
  * Adapter clientlib requires ComponentActivity for ActivityResultSender.
@@ -27,6 +29,10 @@ class MainActivity : FlutterFragmentActivity() {
   private val REMINDER_CHANNEL = "visor/reminder"
   private val WALLET_CHANNEL = "visor/wallet"
   private val NOTIFY_CHANNEL = "visor/notify"
+  private val APP_CHANNEL = "visor/app"
+
+  /** In-flight POST_NOTIFICATIONS request; answered in onRequestPermissionsResult. */
+  private var pendingPermissionResult: MethodChannel.Result? = null
 
   override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
     super.configureFlutterEngine(flutterEngine)
@@ -58,9 +64,12 @@ class MainActivity : FlutterFragmentActivity() {
     MethodChannel(flutterEngine.dartExecutor.binaryMessenger, WALLET_CHANNEL)
       .setMethodCallHandler { call, result ->
         when (call.method) {
-          "authorizeWallet" -> WalletConnect.authorize(this, result)
+          // Single source of truth for the recipient address and the minimum
+          // tip amounts — the Dart UI renders whatever this returns instead
+          // of keeping its own copy that can drift.
+          "tipConfig" -> result.success(WalletConnect.tipConfig())
           "sendTip" -> {
-            val token = (call.argument<String>("token")) ?: "SKR"
+            val token = (call.argument<String>("token")) ?: "SOL"
             val amount = (call.argument<Number>("amount"))?.toDouble() ?: 0.0
             WalletConnect.sendTip(this, token, amount, result)
           }
@@ -74,16 +83,42 @@ class MainActivity : FlutterFragmentActivity() {
           "hasNotificationPermission" -> {
             result.success(hasNotificationPermission())
           }
-          "requestNotificationPermission" -> {
-            requestNotificationPermission()
-            result.success(null)
-          }
+          // Answers only after the user dismisses the system dialog, so the
+          // caller never reads the pre-dialog value.
+          "requestNotificationPermission" -> requestNotificationPermission(result)
           "testNotify" -> {
             result.success(ReminderScheduler.scheduleTest(this, 5))
+          }
+          "canScheduleExactAlarms" -> result.success(canScheduleExactAlarms())
+          "openExactAlarmSettings" -> {
+            openExactAlarmSettings()
+            result.success(null)
           }
           else -> result.notImplemented()
         }
       }
+
+    MethodChannel(flutterEngine.dartExecutor.binaryMessenger, APP_CHANNEL)
+      .setMethodCallHandler { call, result ->
+        when (call.method) {
+          "appVersion" -> result.success(appVersion())
+          else -> result.notImplemented()
+        }
+      }
+  }
+
+  override fun onDestroy() {
+    // Drop the cached ActivityResultSender so it never outlives this Activity.
+    WalletConnect.detach(this)
+    pendingPermissionResult?.success(hasNotificationPermission())
+    pendingPermissionResult = null
+    super.onDestroy()
+  }
+
+  private fun appVersion(): String = try {
+    packageManager.getPackageInfo(packageName, 0).versionName ?: ""
+  } catch (_: PackageManager.NameNotFoundException) {
+    ""
   }
 
   private fun hasNotificationPermission(): Boolean {
@@ -94,10 +129,64 @@ class MainActivity : FlutterFragmentActivity() {
     return true
   }
 
-  private fun requestNotificationPermission() {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-      requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 2001)
+  private fun requestNotificationPermission(result: MethodChannel.Result) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+      result.success(true)
+      return
     }
+    if (hasNotificationPermission()) {
+      result.success(true)
+      return
+    }
+    // Only one dialog can be in flight; answer any earlier caller first.
+    pendingPermissionResult?.success(false)
+    pendingPermissionResult = result
+    requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_POST_NOTIFICATIONS)
+  }
+
+  override fun onRequestPermissionsResult(
+    requestCode: Int,
+    permissions: Array<out String>,
+    grantResults: IntArray,
+  ) {
+    super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+    if (requestCode != REQ_POST_NOTIFICATIONS) return
+    val granted = grantResults.isNotEmpty() &&
+        grantResults[0] == PackageManager.PERMISSION_GRANTED
+    pendingPermissionResult?.success(granted)
+    pendingPermissionResult = null
+  }
+
+  /** Android 12+ gates exact alarms behind a user-granted special permission. */
+  private fun canScheduleExactAlarms(): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return true
+    val am = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+    return am.canScheduleExactAlarms()
+  }
+
+  private fun openExactAlarmSettings() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+    try {
+      startActivity(
+        Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+          .setData(Uri.parse("package:$packageName")),
+      )
+    } catch (_: Exception) {
+      // Some OEM builds ship without the settings screen — fall back to the
+      // generic app details page.
+      try {
+        startActivity(
+          Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+            .setData(Uri.parse("package:$packageName")),
+        )
+      } catch (_: Exception) {
+        // Nothing sensible left to do; the reminder still works inexactly.
+      }
+    }
+  }
+
+  private companion object {
+    const val REQ_POST_NOTIFICATIONS = 2001
   }
 }
 
@@ -105,16 +194,24 @@ class MainActivity : FlutterFragmentActivity() {
  * Centralized alarm scheduling. Exact one-shot alarms + self-rescheduling so
  * the daily reminder fires reliably (even in Doze) and survives reboots via
  * [BootReceiver].
+ *
+ * The daily reminder and the "test notification" deliberately use different
+ * request codes AND different actions, so they map to distinct PendingIntents
+ * — firing a test must never move or cancel the armed daily alarm.
  */
 object ReminderScheduler {
 
   private const val REQ_REMINDER = 1001
+  private const val REQ_TEST = 1002
+  private const val KEY_ENABLED = "enabled"
+  private const val KEY_HOUR = "hour"
+  private const val KEY_MINUTE = "minute"
 
   fun schedule(context: Context, enabled: Boolean, hour: Int, minute: Int): Boolean {
     store(context).edit()
-      .putBoolean("enabled", enabled)
-      .putInt("hour", hour)
-      .putInt("minute", minute)
+      .putBoolean(KEY_ENABLED, enabled)
+      .putInt(KEY_HOUR, hour)
+      .putInt(KEY_MINUTE, minute)
       .apply()
 
     val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
@@ -122,30 +219,40 @@ object ReminderScheduler {
 
     if (!enabled) {
       am.cancel(pi)
+      // cancel() drops the alarm but leaves the PendingIntent registered, so
+      // a later FLAG_NO_CREATE lookup would still report "armed". Retire it.
+      pi.cancel()
       return true
     }
 
     return scheduleExact(am, pi, nextTriggerMillis(hour, minute))
   }
 
+  /**
+   * True only when the user has the reminder switched on AND an alarm is
+   * actually registered — the stored flag alone can outlive a cancelled
+   * alarm, and the PendingIntent alone can outlive a disabled reminder.
+   */
   fun hasSchedule(context: Context): Boolean {
-    val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-    val pi = pendingIntent(context, REQ_REMINDER, ReminderReceiver.ACTION_REMINDER, noCreate = true)
+    if (!store(context).getBoolean(KEY_ENABLED, false)) return false
+    val pi = pendingIntent(
+      context, REQ_REMINDER, ReminderReceiver.ACTION_REMINDER, noCreate = true,
+    )
     return pi != null
   }
 
-  /** One-shot exact-fire test: reminds in [seconds] seconds regardless of time. */
+  /** One-shot exact-fire test on its own PendingIntent slot. */
   fun scheduleTest(context: Context, seconds: Long): Boolean {
     val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-    val pi = pendingIntent(context, REQ_REMINDER, ReminderReceiver.ACTION_REMINDER)
+    val pi = pendingIntent(context, REQ_TEST, ReminderReceiver.ACTION_TEST)
     return scheduleExact(am, pi, System.currentTimeMillis() + seconds * 1000)
   }
 
   fun scheduleNextDay(context: Context) {
     val sp = store(context)
-    if (!sp.getBoolean("enabled", false)) return
-    val hour = sp.getInt("hour", 21)
-    val minute = sp.getInt("minute", 0)
+    if (!sp.getBoolean(KEY_ENABLED, false)) return
+    val hour = sp.getInt(KEY_HOUR, 21)
+    val minute = sp.getInt(KEY_MINUTE, 0)
     val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
     val pi = pendingIntent(context, REQ_REMINDER, ReminderReceiver.ACTION_REMINDER)
     scheduleExact(am, pi, nextTriggerMillis(hour, minute))
