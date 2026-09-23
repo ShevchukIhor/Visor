@@ -1,58 +1,89 @@
 # Visor — dApp Store Listing Metadata
 # Скопіюй ці значення у Publisher Portal (publish.solanamobile.com)
 
+> **Чому формулювання саме такі.** Publisher Policy вимагає, щоб dApp, який
+> робить медичні або health-твердження, ці твердження **обґрунтовував** і мав
+> відповідні дисклеймери. Тому опис описує те, **що застосунок робить**
+> (стимули, завдання, таймери), а не те, що він нібито **лікує**. Формулювань
+> штибу «reduces eye strain» чи «sharper eyes» тут свідомо немає: вони
+> недоказові й це типова причина відмови.
+
 ## App Name (назва)
 Visor
 
-## Short Description / Subtitle (<= 50 символів, у форматі порталу)
-Vision training for sharper eyes
+## Subtitle (<= 50 символів)
+Gabor-patch games and guided eye exercises
 
-(27 символів — в межах ліміту)
+(42 символи — в межах ліміту)
+
+## Description (коротке поле «In a short paragraph, describe your app»)
+Visor is an offline vision-training app built around Gabor patches — the
+striped stimuli used in vision research to study how we tell fine detail
+apart. Find the one matching pattern in grids from 3x3 to 6x6 across four
+difficulty levels, where every card differs from the target by a single
+controlled parameter: orientation, spatial frequency, or phase. Eight
+guided eye-movement drills round it out, each on a fixed 30/60/120-second
+timer. Your streak and scores stay in on-device storage — no accounts, no
+ads, no trackers. Visor is a training tool, not a medical device, and does
+not diagnose or treat any eye condition.
 
 ## Long Description
-Visor trains your visual cortex with Gabor-patch games and guided eye
-exercises — no paywall, no gimmicks.
+Visor is a vision-training app built around Gabor patches — the striped,
+softly-faded targets used in vision research to study how we tell fine
+visual detail apart. No paywall, no accounts, no ads.
 
 WHAT YOU GET
 
-Gabor Patch Game: find the matching pattern in a 3x3 to 6x6 grid. Each
-card differs by a single controlled parameter (orientation, spatial
-frequency, or phase), so your brain learns to discriminate real visual
-detail rather than guessing random noise.
+Gabor Patch Game: find the one matching pattern in a 3x3 to 6x6 grid.
+Every distractor differs from the target by a single controlled parameter
+— orientation, spatial frequency, or phase — so the task rewards genuine
+discrimination rather than guessing.
 
-Four difficulty levels: Easy (3x3) up to Expert (6x6), each tightening
-the discrimination threshold the way neurophysiology research does.
+Four difficulty levels: Easy (3x3) through Expert (6x6). Each level
+narrows the difference between the target and its distractors, and Expert
+also lowers contrast.
 
-Eye Exercises: eight guided movements — convergence, near-far focus
-cycles with a breathing rhythm, wide focus shifting, saccadic jumps,
-smooth pursuit, figure-8 tracking, peripheral awareness, and drifting
-Gabor orbs for tired-eye recovery. Every exercise runs on a set timer
-(30/60/120s), not endlessly.
+Eye Exercises: eight guided movement drills — convergence, near-far focus
+cycles paced like a breath, wide focus shifting, saccadic jumps, smooth
+pursuit, figure-8 tracking, peripheral awareness, and drifting Gabor orbs.
+Every drill runs on a fixed timer you choose (30/60/120s), never endlessly.
 
-Progress: local streak, today-counter, and best score, all stored
-on-device in SQLite. Your data never leaves the phone.
+Progress: streak, today-counter and best score, kept in on-device SQLite.
+Training data stays on your device and is not uploaded anywhere; Android
+backup is switched off for the app.
 
-Tipping: if the app helped your eyes, an optional tip (SOL or SKR) can
-be sent straight from the About screen via Seed Vault — no account
-needed, the wallet only approves the one transaction you choose.
+Daily reminders: one nudge a day, and only on days you have not trained
+yet — never after a completed session. The reminder is re-armed after a
+reboot.
 
-Daily reminders fire exactly once, only on days you haven't trained —
-never after a completed session. Alarms survive reboot.
+Tipping: entirely optional. If the app was useful, a tip (SOL or SKR) can
+be sent from the About screen via Seed Vault. Visor never handles your
+keys — you review and approve the transaction in the wallet.
 
-Visor is built for Solana Seeker (Android), ARM64, and works entirely
-offline. No ads, no trackers, no accounts required.
+Visor is built for Solana Seeker (Android, ARM64) and works offline. The
+only time it uses the network is when you choose to send a tip: it then
+queries public Solana RPC endpoints, which see your wallet's public
+address, as with any Solana wallet.
+
+IMPORTANT
+
+Visor is a training tool, not a medical device. It does not diagnose,
+treat, cure or prevent any eye condition, and nothing in it is medical
+advice. If you have persistent eye pain, double vision, sudden vision
+changes, or any other concerning symptom, see a qualified eye-care
+professional.
 
 ## Publisher Portal — full form values
 | Field | Value |
 |-------|-------|
 | dApp Name (<= 25) | Visor |
 | Package Name | com.visor.app |
-| Subtitle (<= 50) | Vision training for sharper eyes |
-| Description | (see Long Description above) |
+| Subtitle (<= 50) | Gabor-patch games and guided eye exercises |
+| Description | (see Description above) |
 | dApp Icon 512x512 | assets/icon_512.png |
 | Banner 1200x600 | visor-assets/banner_1200x600.png |
 | Graphic 1200x1200 | visor-assets/graphic_1200x1200.png |
-| Preview images (min 4, 1080x1920 portrait) | screenshot from Seeker (self-capture) |
+| Preview images (min 4, 1080x1920 portrait) | uploaded to the portal draft |
 | Headline (<= 50) | Train your eyes, not just your streak |
 | Languages | English |
 | Countries | All countries |
@@ -66,15 +97,35 @@ offline. No ads, no trackers, no accounts required.
 Lifestyle
 
 ## Tags / keywords (для пошуку)
-vision training, eye exercises, gabor, focus, eye strain, screen fatigue
+gabor patch, vision training, eye exercises, visual discrimination,
+focus drills, psychophysics
 
-## Screenshots (1080px+, однакової орієнтації)
-Зняти зі Seeker через `adb shell screencap -p` (портрет 1200x2670, потім
-зменшити до 1080x2400 для однакової пропорції).
+## Release / APK
+| | |
+|---|---|
+| Версія | 0.3.1 (`versionCode` 5) |
+| Підпис | `CN=Ihor Shevchuk, OU=Mobile, O=ShevchukIhor, C=UA`, RSA 4096 |
+| Артефакт | https://github.com/ShevchukIhor/Visor/releases/download/v0.3.1/visor-0.3.1.apk |
+| sha256 | `c77b31e7d5054a0e1f116e41b009197607482b330fe939dc40db5ef844e40c77` |
 
-## Media specs (алише для довідки)
+⚠️ Кожне оновлення в dApp Store потребує **вищого `versionCode`** і підпису
+**тим самим** ключем. Втрата keystore = неможливість оновити застосунок.
+
+## Media specs (для довідки)
 - Icon: 512x512px (required)
 - Banner: 1200x600px (required)
 - Graphic: 1200x1200px
-- Preview images: jpg/png/webp, до 3MB, 1080x1920 (portrait) or 1920x1080 (landscape)
+- Preview images: jpg/png/webp, до 3MB, 1080x1920 (portrait) або 1920x1080 (landscape)
 - Preview video: mp4, до 30MB, 720px+ (1080p recommended)
+
+## Чек-лист перед подачею
+- [x] APK підписаний окремим релізним ключем (не тим, що для Google Play)
+- [x] Icon / Banner / Graphic точних розмірів
+- [x] Privacy Policy і Terms доступні за публічними URL
+- [x] Privacy Policy описує мережеві запити до Solana RPC
+- [x] Медичний дисклеймер: у застосунку, у TERMS.md і в описі лістингу
+- [x] Скріншоти (мін. 4, 1080x1920) завантажені в драфт
+- [ ] Publisher-гаманець із ~0.2 SOL на ArDrive та мінт (потрібен для **всіх**
+      майбутніх подач цього застосунку)
+- [ ] KYC/KYB пройдено в порталі
+- [ ] Під час подачі підтверджено **кожен** запит на підпис
