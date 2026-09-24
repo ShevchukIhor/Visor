@@ -87,11 +87,19 @@ professional.
 | Headline (<= 50) | Train your eyes, not just your streak |
 | Languages | English |
 | Countries | All countries |
-| App Website | https://github.com/ShevchukIhor/Visor |
+| App Website | https://visor-mobile.pages.dev/ |
 | Contact Email | env5150@proton.me |
 | Support Email | env5150@proton.me |
-| Terms of Use | https://github.com/ShevchukIhor/Visor/blob/main/TERMS.md |
-| Privacy Policy | https://github.com/ShevchukIhor/Visor/blob/main/PRIVACY.md |
+| Terms of Use | https://visor-mobile.pages.dev/terms.html |
+| Privacy Policy | https://visor-mobile.pages.dev/privacy.html |
+
+## Publisher profile (окремо від лістингу застосунку)
+| Field | Value |
+|-------|-------|
+| Publisher Website | https://shevchukihor.github.io/ |
+
+⚠️ Усі поля, які бачить рецензент, ведуть на власні HTML-сторінки, а не на
+github.com (перевірено: усі віддають 200).
 
 ## Category (категорія у dApp Store)
 Lifestyle
@@ -108,10 +116,8 @@ focus drills, psychophysics
 | Відбиток сертифіката | `a9881d7e613f1a3a25527e1169a760adc8bb5c0c58887fa7815d6334698f1493` |
 | sha256 APK | `1109d762f650b343e4841758d55529e5126431e9fa5c8252e6d8c18d9cee620f` |
 
-> `versionCode` 5 спалений: подача v0.3.1 застрягла в порталі через помилку
-> завантаження (CORS на GitHub release assets), а скасувати подачу портал не
-> дозволяє. Кожна невдала подача займає слот версії назавжди — тому подавати
-> треба **файлом**, а не посиланням.
+> Подавати APK **файлом**, не посиланням: портал не може завантажити асет
+> GitHub release через CORS, а невдала подача займає слот версії назавжди.
 
 ⚠️ Кожне оновлення в dApp Store потребує **вищого `versionCode`** і підпису
 **тим самим** ключем. Втрата keystore = неможливість оновити застосунок.
@@ -134,3 +140,6 @@ focus drills, psychophysics
       майбутніх подач цього застосунку)
 - [ ] KYC/KYB пройдено в порталі
 - [ ] Під час подачі підтверджено **кожен** запит на підпис
+- [ ] У порталі стоять актуальні **Subtitle і Description** з цього файлу
+- [ ] **Publisher Website** веде на портфоліо, не на github.com
+- [ ] APK подано **файлом**, не посиланням

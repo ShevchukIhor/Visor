@@ -45,3 +45,9 @@ visor-assets/banner_B*.png
 .github/
 documentation/
 .opencode/COMMIT_BACKUP.txt
+
+# Приватні нотатки щодо подачі — не публікуються
+NOTES-dapp-store.md
+
+# Локальні артефакти збірки (APK) — не публікуються
+.local-artifacts/
