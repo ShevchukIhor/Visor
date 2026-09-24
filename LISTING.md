@@ -103,10 +103,15 @@ focus drills, psychophysics
 ## Release / APK
 | | |
 |---|---|
-| Версія | 0.3.1 (`versionCode` 5) |
+| Версія | 0.3.2 (`versionCode` 6) |
 | Підпис | `CN=Ihor Shevchuk, OU=Mobile, O=ShevchukIhor, C=UA`, RSA 4096 |
-| Артефакт | https://github.com/ShevchukIhor/Visor/releases/download/v0.3.1/visor-0.3.1.apk |
-| sha256 | `c77b31e7d5054a0e1f116e41b009197607482b330fe939dc40db5ef844e40c77` |
+| Відбиток сертифіката | `a9881d7e613f1a3a25527e1169a760adc8bb5c0c58887fa7815d6334698f1493` |
+| sha256 APK | `1109d762f650b343e4841758d55529e5126431e9fa5c8252e6d8c18d9cee620f` |
+
+> `versionCode` 5 спалений: подача v0.3.1 застрягла в порталі через помилку
+> завантаження (CORS на GitHub release assets), а скасувати подачу портал не
+> дозволяє. Кожна невдала подача займає слот версії назавжди — тому подавати
+> треба **файлом**, а не посиланням.
 
 ⚠️ Кожне оновлення в dApp Store потребує **вищого `versionCode`** і підпису
 **тим самим** ключем. Втрата keystore = неможливість оновити застосунок.
