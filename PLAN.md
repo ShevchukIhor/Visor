@@ -4,8 +4,8 @@ This document is the working plan for Visor: an on-device, free, no-ads
 vision-training application for Solana Seeker. It maps what exists today,
 what is planned, and the order in which we intend to close the gaps.
 
-> Companion docs: `ROADMAP.md` (public feature roadmap), `README.md`
-> (landing + user-facing overview).
+> Kept out of `docs/`: that directory is published to Cloudflare Pages,
+> and this is an internal working document, not a web page.
 
 ---
 
@@ -16,7 +16,7 @@ from the UI so it can be unit-tested independently.
 
 ```
 lib/
-  main.dart                     entry point — fullscreen immersive, MaterialApp
+  main.dart                     entry point — edge-to-edge, MaterialApp
   screens/
     dashboard_screen.dart       home: streak / today / best + navigation menu
     setup_screen.dart           duration (1/2/3/5 min), difficulty (4 levels), stripe mode
@@ -28,12 +28,13 @@ lib/
   widgets/
     gabor_view.dart             renders a GaborPatch as an image (cached)
   core/
+    analytics/chart_math.dart   chart scale helpers (pure, tested)
     gabor/gabor_patch.dart      patch model + generator + difficulty rules (core)
     models/session_setup.dart   session configuration DTO
-    db/vision_db.dart           SQLite: sessions + reminder + account
+    db/vision_db.dart           SQLite: sessions + reminder (schema v3)
     exercises/exercise_painter.dart  exercise trajectories (Canvas)
     reminder/reminder_service.dart   native notification layer
-    wallet/wallet_auth.dart     Seed Vault (Solana Mobile) auth
+    wallet/wallet_auth.dart     Seed Vault tipping (no separate auth step)
     theme/visor_theme.dart      dark theme
 ```
 
@@ -123,10 +124,10 @@ with at least one session.
 - Analytics chart (0-based scale, grid, date labels, 1-point handling).
 - Tip/donate flow (SOL/SKR) wired through MWA signAndSendTransactions.
 
-### 4.1 Unit tests for the generator core
-The generator is clean and dependency-free but has zero tests. Add `test/`
-coverage: distractor deltas fall within the declared range, the target is
-always present in the grid, and `render` never emits NaN.
+### 4.1 Unit tests — done
+40 tests across `test/gabor_test.dart`, `test/exercises_test.dart` and
+`test/scoring_test.dart`: the render contract, distractor deltas, exercise
+trajectories, streak/score arithmetic and chart scaling.
 
 ### 4.2 Ambient Training
 Passive Gabor grid over other windows (Android overlay). Not yet started;
@@ -150,7 +151,7 @@ breakdown. Low priority polish.
 
 ## 5. Recommended order
 
-1. Unit tests for the generator (cheapest, catches regressions).
+1. ~~Unit tests for the generator~~ — done.
 2. Ambient Training (flagship feature missing from the current build).
 3. 3D exercises (vergence-accommodation).
 4. Monetization final call + PRO-badge cosmetics if any.
