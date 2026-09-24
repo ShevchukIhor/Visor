@@ -88,8 +88,8 @@ professional.
 | Languages | English |
 | Countries | All countries |
 | App Website | https://visor-mobile.pages.dev/ |
-| Contact Email | env5150@proton.me |
-| Support Email | env5150@proton.me |
+| Contact Email | bluesjazz666@gmail.com |
+| Support Email | bluesjazz666@gmail.com |
 | Terms of Use | https://visor-mobile.pages.dev/terms.html |
 | Privacy Policy | https://visor-mobile.pages.dev/privacy.html |
 

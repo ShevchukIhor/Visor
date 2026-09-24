@@ -32,4 +32,4 @@ We may update these terms from time to time. Continued use after changes constit
 
 ## Contact
 
-For questions about these terms, contact **env5150@proton.me**.
+For questions about these terms, contact **bluesjazz666@gmail.com**.

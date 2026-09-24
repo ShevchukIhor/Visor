@@ -44,4 +44,4 @@ If this policy changes, the updated version will be published with the app.
 
 ## Contact
 
-For privacy questions, contact **env5150@proton.me**.
+For privacy questions, contact **bluesjazz666@gmail.com**.
