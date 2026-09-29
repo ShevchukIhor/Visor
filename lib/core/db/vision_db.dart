@@ -51,7 +51,16 @@ class VisionDb {
   /// open the database twice.
   Future<Database>? _dbFuture;
 
-  Future<Database> get db => _dbFuture ??= _open();
+  Future<Database> get db => _dbFuture ??= _open().onError<Object>((e, _) {
+        // Drop the memo so the next caller retries. Caching the future keeps
+        // two racing first-callers from opening the database twice, but
+        // caching a *rejected* future would poison every later access for
+        // the life of the process — including every Retry affordance in
+        // exercises_screen.dart and session_runner.dart, which exist
+        // specifically to try the write again.
+        _dbFuture = null;
+        throw e;
+      });
 
   Future<Database> _open() async {
     final path = p.join(await getDatabasesPath(), 'visor.db');
