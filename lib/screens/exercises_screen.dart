@@ -129,7 +129,33 @@ class ExerciseRunner extends StatefulWidget {
   /// launched from the exercises list.
   final int? templateId;
 
-  const ExerciseRunner({super.key, required this.type, this.templateId});
+  /// Fixed duration supplied by a routine step. When null the runner shows its
+  /// own picker, which is the standalone path.
+  final int? seconds;
+  final bool autoStart;
+
+  /// Called instead of showing the terminal card, so a session can advance.
+  final VoidCallback? onDone;
+
+  /// Near-Far target choice, fixed by a routine step.
+  final bool gaborTarget;
+
+  /// Called on a failed [_record] write, in addition to setting the retry
+  /// flag. Needed because when [onDone] is set, the finish overlay that
+  /// would otherwise carry the retry affordance never renders — a session
+  /// still needs to know a step's write failed so it can report it.
+  final VoidCallback? onRecordFailed;
+
+  const ExerciseRunner({
+    super.key,
+    required this.type,
+    this.templateId,
+    this.seconds,
+    this.autoStart = false,
+    this.onDone,
+    this.gaborTarget = false,
+    this.onRecordFailed,
+  });
 
   @override
   State<ExerciseRunner> createState() => _ExerciseRunnerState();
@@ -207,8 +233,19 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
       vsync: this,
       duration: Duration(milliseconds: _loopMs),
     );
+    if (widget.seconds != null) {
+      _duration = widget.seconds!;
+      _secondsLeft = _duration;
+    }
+    _nearFarGabor = widget.gaborTarget;
+    if (widget.gaborTarget) _loadGaborImages(count: 6);
     if (widget.type == ExerciseType.orbs) {
       _loadGaborImages(count: 1);
+    }
+    if (widget.autoStart) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _start();
+      });
     }
   }
 
@@ -284,6 +321,11 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
     // A completed exercise is training: record it here, at natural
     // completion, and nowhere else (see _exit below).
     _record();
+    final onDone = widget.onDone;
+    if (onDone != null) {
+      onDone();
+      return;
+    }
   }
 
   /// A completed exercise is training: it belongs in `drills` so the streak,
@@ -317,6 +359,10 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
       // what the user just did.
       debugPrint('Failed to record exercise: $e');
       _saved = false;
+      // Fires regardless of `mounted`: a session step routes around this
+      // widget's own finish overlay via `onDone`, so this may be the only
+      // place a session ever learns the write failed.
+      widget.onRecordFailed?.call();
       if (!mounted) return;
       setState(() => _saveError = true);
     }
@@ -491,6 +537,11 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
   }
 
   Widget _overlay() {
+    if (widget.seconds != null && !_finished) {
+      // A routine step supplies its own duration; the picker belongs only
+      // to the standalone path.
+      return const SizedBox.shrink();
+    }
     if (!_running && !_finished) {
       // Duration picker.
       return _glassCard(

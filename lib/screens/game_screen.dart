@@ -21,7 +21,23 @@ class GameScreen extends StatefulWidget {
   final SessionSetup setup;
   final int? templateId;
 
-  const GameScreen({super.key, required this.setup, this.templateId});
+  /// Called instead of showing the terminal card, so a routine can advance
+  /// to its next step.
+  final VoidCallback? onDone;
+
+  /// Called on a failed [_save] write, in addition to setting the retry
+  /// flag. When [onDone] is set the result view that would otherwise carry
+  /// the retry affordance never renders, so a routine needs this to learn a
+  /// step's write failed and report it at the end.
+  final VoidCallback? onRecordFailed;
+
+  const GameScreen({
+    super.key,
+    required this.setup,
+    this.templateId,
+    this.onDone,
+    this.onRecordFailed,
+  });
 
   @override
   State<GameScreen> createState() => _GameScreenState();
@@ -71,6 +87,11 @@ class _GameScreenState extends State<GameScreen>
     _timer?.cancel();
     setState(() => _finished = true);
     _save();
+    final onDone = widget.onDone;
+    if (onDone != null) {
+      onDone();
+      return;
+    }
   }
 
   Future<void> _save() async {
@@ -105,6 +126,10 @@ class _GameScreenState extends State<GameScreen>
       // what the user just did.
       debugPrint('Failed to save session: $e');
       _saved = false;
+      // Fires regardless of `mounted`: a routine step routes around this
+      // widget's own result view via `onDone`, so this may be the only place
+      // a routine ever learns the write failed.
+      widget.onRecordFailed?.call();
       if (!mounted) return;
       setState(() => _saveError = true);
     }
