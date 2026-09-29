@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../core/db/drill.dart';
 import '../core/db/vision_db.dart';
 import '../core/exercises/exercise_painter.dart';
 import '../core/gabor/gabor_patch.dart';
@@ -140,11 +141,11 @@ class ExerciseRunner extends StatefulWidget {
   /// Near-Far target choice, fixed by a routine step.
   final bool gaborTarget;
 
-  /// Called on a failed [_record] write, in addition to setting the retry
-  /// flag. Needed because when [onDone] is set, the finish overlay that
-  /// would otherwise carry the retry affordance never renders — a session
-  /// still needs to know a step's write failed so it can report it.
-  final VoidCallback? onRecordFailed;
+  /// Called with the exact [Drill] whose write failed, in addition to
+  /// setting the retry flag. Needed because when [onDone] is set, the
+  /// finish overlay that would otherwise carry the retry affordance never
+  /// renders — a session still needs the failed row so it can retry it.
+  final void Function(Drill failed)? onRecordFailed;
 
   const ExerciseRunner({
     super.key,
@@ -333,22 +334,22 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
   Future<void> _record() async {
     if (_saved) return;
     _saved = true;
+    final drill = drillForExercise(
+      type: widget.type,
+      seconds: _duration,
+      // Not a literal: from the exit path this is false and the builder
+      // refuses, which is what makes the guard real rather than a habit.
+      completed: _finished,
+      // The `??` fallback is unreachable: `_record` only runs from
+      // `_finish` (called from the ticker started in `_start`, which sets
+      // `_startedAt` first) or from the Retry button, which only exists
+      // once `_finished` is true — i.e. after `_finish` already ran. It is
+      // kept only as a type-safe default, never as a real end-time stamp.
+      startedAt: _startedAt ?? DateTime.now(),
+      templateId: widget.templateId,
+    );
+    if (drill == null) return;
     try {
-      final drill = drillForExercise(
-        type: widget.type,
-        seconds: _duration,
-        // Not a literal: from the exit path this is false and the builder
-        // refuses, which is what makes the guard real rather than a habit.
-        completed: _finished,
-        // The `??` fallback is unreachable: `_record` only runs from
-        // `_finish` (called from the ticker started in `_start`, which sets
-        // `_startedAt` first) or from the Retry button, which only exists
-        // once `_finished` is true — i.e. after `_finish` already ran. It is
-        // kept only as a type-safe default, never as a real end-time stamp.
-        startedAt: _startedAt ?? DateTime.now(),
-        templateId: widget.templateId,
-      );
-      if (drill == null) return;
       await VisionDb.instance.insertDrill(drill);
       await ReminderService.markTrainedToday();
       if (!mounted) return;
@@ -361,8 +362,10 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
       _saved = false;
       // Fires regardless of `mounted`: a session step routes around this
       // widget's own finish overlay via `onDone`, so this may be the only
-      // place a session ever learns the write failed.
-      widget.onRecordFailed?.call();
+      // place a session ever learns the write failed. Carries the exact
+      // `Drill` that failed to insert, so a retry does not have to
+      // reconstruct it from step configuration.
+      widget.onRecordFailed?.call(drill);
       if (!mounted) return;
       setState(() => _saveError = true);
     }

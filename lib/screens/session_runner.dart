@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
@@ -28,14 +27,14 @@ class SessionRunner extends StatefulWidget {
   State<SessionRunner> createState() => _SessionRunnerState();
 }
 
-/// A step whose `drills` write failed. Kept as a lazily-rebuildable [Drill]
-/// rather than a reference to the (by then likely disposed) step widget, so
-/// retry works from data the session already owns and does not depend on any
-/// child's internal state surviving.
+/// A step whose `drills` write failed, carrying the exact [Drill] the failing
+/// widget already built and tried to insert — not a reconstruction from step
+/// configuration, which cannot recover runtime fields like a Gabor game's
+/// trial count and score.
 class _FailedStep {
-  _FailedStep({required this.index, required this.rebuild});
+  _FailedStep({required this.index, required this.drill});
   final int index;
-  final Drill Function() rebuild;
+  final Drill drill;
 }
 
 class _SessionRunnerState extends State<SessionRunner> {
@@ -45,11 +44,6 @@ class _SessionRunnerState extends State<SessionRunner> {
   /// Steps that failed to save, in case any is retried from the finish card.
   final List<_FailedStep> _failedSteps = [];
   bool _retrying = false;
-
-  /// Wall-clock time each step began, captured the first time it is built.
-  /// Used only to file a retried write under roughly the right moment —
-  /// good enough since it only affects the retry, not the original attempt.
-  final Map<int, DateTime> _stepStartedAt = {};
 
   List<TrainingStep> get _steps => widget.template.steps;
 
@@ -64,10 +58,10 @@ class _SessionRunnerState extends State<SessionRunner> {
   /// Records a step's write failure. Called from a step widget's
   /// `onRecordFailed`, which may fire after that widget has already been
   /// replaced by the next step — so it must not touch the widget, only the
-  /// data captured when the step started.
-  void _recordFailure(int index, Drill Function() rebuild) {
+  /// `Drill` it handed up.
+  void _recordFailure(int index, Drill drill) {
     if (!mounted) return;
-    setState(() => _failedSteps.add(_FailedStep(index: index, rebuild: rebuild)));
+    setState(() => _failedSteps.add(_FailedStep(index: index, drill: drill)));
   }
 
   Future<void> _retryFailed() async {
@@ -76,7 +70,7 @@ class _SessionRunnerState extends State<SessionRunner> {
     final stillFailed = <_FailedStep>[];
     for (final failed in _failedSteps) {
       try {
-        await VisionDb.instance.insertDrill(failed.rebuild());
+        await VisionDb.instance.insertDrill(failed.drill);
         await ReminderService.markTrainedToday();
       } catch (e) {
         debugPrint('Retry failed for routine step ${failed.index}: $e');
@@ -108,7 +102,6 @@ class _SessionRunnerState extends State<SessionRunner> {
   Widget _stage(TrainingStep step) {
     final key = ValueKey('step-$_index');
     final index = _index;
-    _stepStartedAt.putIfAbsent(index, () => DateTime.now());
     return switch (step) {
       ExerciseStep(:final type, :final seconds, :final gaborTarget) =>
         _exerciseStage(key, index, type, seconds, gaborTarget),
@@ -138,7 +131,6 @@ class _SessionRunnerState extends State<SessionRunner> {
     int seconds,
     bool gaborTarget,
   ) {
-    final startedAt = _stepStartedAt[index]!;
     return ExerciseRunner(
       key: key,
       type: type,
@@ -147,16 +139,7 @@ class _SessionRunnerState extends State<SessionRunner> {
       autoStart: true,
       onDone: _next,
       templateId: widget.template.id,
-      onRecordFailed: () => _recordFailure(
-        index,
-        () => drillForExercise(
-          type: type,
-          seconds: seconds,
-          completed: true,
-          startedAt: startedAt,
-          templateId: widget.template.id,
-        )!,
-      ),
+      onRecordFailed: (drill) => _recordFailure(index, drill),
     );
   }
 
@@ -167,32 +150,13 @@ class _SessionRunnerState extends State<SessionRunner> {
     int seconds,
     bool curved,
   ) {
-    final startedAt = _stepStartedAt[index]!;
     return GameScreen(
       key: key,
       setup: SessionSetup(
           durationS: seconds, difficulty: difficulty, curved: curved),
       templateId: widget.template.id,
       onDone: _next,
-      // The retry can't recover the trials actually played (that state lived
-      // only in the disposed GameScreen), so it re-files the step as
-      // completed with no trial detail — enough to close the streak and show
-      // up in history, which is what was actually lost.
-      onRecordFailed: () => _recordFailure(
-        index,
-        () => Drill(
-          startedAt: startedAt,
-          task: taskGaborGrid,
-          durationS: seconds,
-          completed: true,
-          templateId: widget.template.id,
-          params: jsonEncode({
-            'difficulty': difficulty.name,
-            'grid': difficulty.grid,
-            'pattern': curved ? 'curved' : 'straight',
-          }),
-        ),
-      ),
+      onRecordFailed: (drill) => _recordFailure(index, drill),
     );
   }
 

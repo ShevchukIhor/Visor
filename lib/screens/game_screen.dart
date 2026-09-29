@@ -25,11 +25,11 @@ class GameScreen extends StatefulWidget {
   /// to its next step.
   final VoidCallback? onDone;
 
-  /// Called on a failed [_save] write, in addition to setting the retry
-  /// flag. When [onDone] is set the result view that would otherwise carry
-  /// the retry affordance never renders, so a routine needs this to learn a
-  /// step's write failed and report it at the end.
-  final VoidCallback? onRecordFailed;
+  /// Called with the exact [Drill] whose write failed, in addition to
+  /// setting the retry flag. When [onDone] is set the result view that
+  /// would otherwise carry the retry affordance never renders, so a routine
+  /// needs this to learn a step's write failed and retry that same row.
+  final void Function(Drill failed)? onRecordFailed;
 
   const GameScreen({
     super.key,
@@ -102,22 +102,23 @@ class _GameScreenState extends State<GameScreen>
       total: _total,
       d: widget.setup.difficulty,
     );
+    final drill = Drill(
+      startedAt: _startedAt ?? DateTime.now(),
+      task: taskGaborGrid,
+      durationS: widget.setup.durationS,
+      completed: true,
+      trials: _total,
+      correct: _correct,
+      score: score,
+      templateId: widget.templateId,
+      params: jsonEncode({
+        'difficulty': widget.setup.difficulty.name,
+        'grid': _grid,
+        'pattern': widget.setup.curved ? 'curved' : 'straight',
+      }),
+    );
     try {
-      await VisionDb.instance.insertDrill(Drill(
-        startedAt: _startedAt ?? DateTime.now(),
-        task: taskGaborGrid,
-        durationS: widget.setup.durationS,
-        completed: true,
-        trials: _total,
-        correct: _correct,
-        score: score,
-        templateId: widget.templateId,
-        params: jsonEncode({
-          'difficulty': widget.setup.difficulty.name,
-          'grid': _grid,
-          'pattern': widget.setup.curved ? 'curved' : 'straight',
-        }),
-      ));
+      await VisionDb.instance.insertDrill(drill);
       // Tell the native reminder layer we trained today.
       await ReminderService.markTrainedToday();
     } catch (e) {
@@ -128,8 +129,10 @@ class _GameScreenState extends State<GameScreen>
       _saved = false;
       // Fires regardless of `mounted`: a routine step routes around this
       // widget's own result view via `onDone`, so this may be the only place
-      // a routine ever learns the write failed.
-      widget.onRecordFailed?.call();
+      // a routine ever learns the write failed. Carries the exact `Drill`
+      // that failed to insert, so a retry does not have to guess at trial
+      // stats it can no longer observe.
+      widget.onRecordFailed?.call(drill);
       if (!mounted) return;
       setState(() => _saveError = true);
     }
