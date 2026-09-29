@@ -42,10 +42,15 @@ void main() {
   });
 
   group('load categories', () {
-    test('every exercise type has a load', () {
-      for (final t in ExerciseType.values) {
-        expect(t.load, isNotNull, reason: '$t');
-      }
+    test('each exercise maps to the system it actually loads', () {
+      expect(ExerciseType.convergence.load, ExerciseLoad.vergence);
+      expect(ExerciseType.nearFar.load, ExerciseLoad.accommodation);
+      expect(ExerciseType.focusShift.load, ExerciseLoad.saccadic);
+      expect(ExerciseType.saccadic.load, ExerciseLoad.saccadic);
+      expect(ExerciseType.pursuit.load, ExerciseLoad.pursuit);
+      expect(ExerciseType.figure8.load, ExerciseLoad.pursuit);
+      expect(ExerciseType.peripheral.load, ExerciseLoad.peripheral);
+      expect(ExerciseType.orbs.load, ExerciseLoad.relax);
     });
 
     test('the two tracking drills share a category', () {
@@ -90,6 +95,18 @@ void main() {
         ExerciseStep(type: ExerciseType.convergence, seconds: 60),
       ]);
       expect(w, isEmpty);
+    });
+
+    test('a vergence pair earns both warnings, which say different things', () {
+      // Two facts about one pair, deliberately not merged: they load the same
+      // system, and vergence work wants a rest after it.
+      final w = templateWarnings([
+        ExerciseStep(type: ExerciseType.convergence, seconds: 60),
+        ExerciseStep(type: ExerciseType.convergence, seconds: 60),
+      ]);
+      expect(w, hasLength(2));
+      expect(w.where((s) => s.contains('same system')), hasLength(1));
+      expect(w.where((s) => s.toLowerCase().contains('rest')), hasLength(1));
     });
   });
 }

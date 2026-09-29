@@ -1,5 +1,8 @@
-/// Routine building blocks. Pure Dart: no Flutter, so the rules below are
-/// directly testable.
+/// Routine building blocks and the rules the editor applies to them.
+///
+/// No direct Flutter dependency, though `ExerciseType` arrives through
+/// `exercise_painter.dart`, which does import Flutter. The rules below need no
+/// widget to exercise, which is what makes them directly testable.
 library;
 
 import '../exercises/exercise_painter.dart';
