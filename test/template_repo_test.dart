@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:visor/core/db/vision_db.dart';
 import 'package:visor/core/exercises/exercise_painter.dart';
+import 'package:visor/core/gabor/gabor_patch.dart';
 import 'package:visor/core/training/template_repo.dart';
 import 'package:visor/core/training/training_step.dart';
 
@@ -103,5 +104,66 @@ void main() {
     final got = await repo.forWeekday(DateTime.wednesday);
     expect(got!.name, first.name);
     expect(got.steps, isNotEmpty);
+  });
+
+  test('an exercise step round-trips its type and its Gabor target',
+      () async {
+    await repo.save(t('X', [
+      ExerciseStep(
+          type: ExerciseType.nearFar, seconds: 90, gaborTarget: true),
+    ]));
+    final s = (await repo.all()).single.steps.single as ExerciseStep;
+    // nearFar, not the orElse fallback of orbs: a dropped 'type' would show.
+    expect(s.type, ExerciseType.nearFar);
+    expect(s.gaborTarget, isTrue);
+    expect(s.seconds, 90);
+  });
+
+  test('a gabor step round-trips its difficulty and stripe mode', () async {
+    await repo.save(t('X', [
+      GaborGameStep(
+          difficulty: Difficulty.hard, seconds: 180, curved: true),
+    ]));
+    final s = (await repo.all()).single.steps.single as GaborGameStep;
+    expect(s.difficulty, Difficulty.hard); // not the easy fallback
+    expect(s.curved, isTrue);
+    expect(s.seconds, 180);
+  });
+
+  test('a rest step round-trips its cue', () async {
+    await repo.save(t('X', [RestStep(cue: 'Blink slowly', seconds: 30)]));
+    final s = (await repo.all()).single.steps.single as RestStep;
+    expect(s.cue, 'Blink slowly');
+    expect(s.seconds, 30);
+  });
+
+  test('a drill step round-trips its task id', () async {
+    await repo.save(t('X', [DrillStep(task: 'vernier', seconds: 120)]));
+    final s = (await repo.all()).single.steps.single as DrillStep;
+    expect(s.task, 'vernier');
+    expect(s.seconds, 120);
+  });
+
+  test("no shipped preset trips the app's own warnings", () async {
+    await repo.seedPresets();
+    for (final preset in await repo.all()) {
+      expect(templateWarnings(preset.steps), isEmpty,
+          reason: 'preset "${preset.name}" warns about itself');
+    }
+  });
+
+  test(
+      'deleting a builtin template is refused, but a user template deletes '
+      'normally', () async {
+    await repo.seedPresets();
+    final builtin = (await repo.all()).first;
+    await repo.delete(builtin.id);
+    expect((await repo.all()).map((tpl) => tpl.id), contains(builtin.id));
+
+    final userId = await repo.save(t('Mine', [
+      ExerciseStep(type: ExerciseType.orbs, seconds: 30),
+    ]));
+    await repo.delete(userId);
+    expect((await repo.all()).map((tpl) => tpl.id), isNot(contains(userId)));
   });
 }

@@ -61,8 +61,10 @@ class TemplateRepo {
     });
   }
 
+  /// Builtins can be run, copied and edited, but never deleted.
   Future<void> delete(int id) async {
-    await _db.delete('templates', where: 'id = ?', whereArgs: [id]);
+    await _db.delete('templates',
+        where: 'id = ? AND builtin = 0', whereArgs: [id]);
   }
 
   Future<Map<int, int?>> weekPlan() async {
@@ -93,10 +95,13 @@ class TemplateRepo {
   }
 
   /// Ship four routines so the list is never an empty page. Idempotent: it
-  /// does nothing once any template exists.
+  /// does nothing once any builtin template exists. Guarding on builtins
+  /// specifically (rather than any template) is safe only because [delete]
+  /// refuses to remove a builtin — otherwise deleting all four would
+  /// resurrect them on the next app start.
   Future<void> seedPresets() async {
-    final n = Sqflite.firstIntValue(
-            await _db.rawQuery('SELECT COUNT(*) FROM templates')) ??
+    final n = Sqflite.firstIntValue(await _db
+            .rawQuery('SELECT COUNT(*) FROM templates WHERE builtin = 1')) ??
         0;
     if (n > 0) return;
     for (final t in _presets) {
@@ -115,8 +120,8 @@ class TemplateRepo {
       ExerciseStep(type: ExerciseType.convergence, seconds: 60),
       RestStep(cue: 'Blink — smooth pursuit next', seconds: 15),
       ExerciseStep(type: ExerciseType.pursuit, seconds: 60),
-      ExerciseStep(type: ExerciseType.figure8, seconds: 60),
       ExerciseStep(type: ExerciseType.saccadic, seconds: 45),
+      ExerciseStep(type: ExerciseType.figure8, seconds: 60),
       ExerciseStep(type: ExerciseType.orbs, seconds: 60),
     ]),
     Template(id: 0, name: 'Wind down', builtin: true, steps: const [
@@ -127,6 +132,7 @@ class TemplateRepo {
     Template(id: 0, name: 'Sharpen', builtin: true, steps: const [
       GaborGameStep(difficulty: Difficulty.medium, seconds: 180),
       ExerciseStep(type: ExerciseType.saccadic, seconds: 60),
+      RestStep(cue: 'Blink — focus shifting next', seconds: 15),
       ExerciseStep(type: ExerciseType.focusShift, seconds: 60),
       ExerciseStep(type: ExerciseType.orbs, seconds: 60),
     ]),
@@ -178,8 +184,13 @@ class TemplateRepo {
         );
       case 'drill':
         return DrillStep(task: (p['task'] as String?) ?? '', seconds: seconds);
-      default:
+      case 'rest':
         return RestStep(cue: (p['cue'] as String?) ?? '', seconds: seconds);
+      default:
+        // Rest is explicitly not training, so a corrupt or future-version
+        // row must never be silently treated as a rest step — that would
+        // stop it from counting toward a streak without anyone noticing.
+        throw StateError('Unknown training step kind: ${r['kind']}');
     }
   }
 }
