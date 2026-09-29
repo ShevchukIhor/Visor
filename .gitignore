@@ -51,3 +51,23 @@ NOTES-dapp-store.md
 
 # Локальні артефакти збірки (APK) — не публікуються
 .local-artifacts/
+
+# Локальні налаштування AI-інструментів — не стосуються проєкту
+.claude/
+.opencode/
+.aider*
+.cursor/
+.vscode/
+CLAUDE.local.md
+AGENTS.local.md
+
+# Скретч і тимчасові файли
+*.log
+*.tmp
+*.bak
+*.orig
+*.rej
+*~
+scratch/
+tmp/
+

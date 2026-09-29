@@ -8,7 +8,7 @@
 
 **Tech Stack:** Flutter, sqflite, `sqflite_common_ffi` (new, tests only), Kotlin (`ReminderReceiver`, `ReminderStore`).
 
-**Spec:** `docs/superpowers/specs/2026-09-29-training-templates-design.md`
+**Spec:** `dev-docs/specs/2026-09-29-training-templates-design.md`
 
 ## Global Constraints
 
