@@ -71,3 +71,6 @@ AGENTS.local.md
 scratch/
 tmp/
 
+
+# Робочі спеки й плани — локальні, не публікуються
+dev-docs/
