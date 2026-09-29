@@ -7,6 +7,7 @@ import 'analytics_screen.dart';
 import 'exercises_screen.dart';
 import 'reminder_screen.dart';
 import 'setup_screen.dart';
+import 'templates_screen.dart';
 import 'about_screen.dart';
 
 /// Home dashboard: streak, today, best, and navigation to training modes.
@@ -82,6 +83,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const SetupScreen()),
+                ).then((_) => _load()),
+              ),
+              _menuButton(
+                icon: Icons.checklist,
+                title: 'Routines',
+                subtitle: 'Run several exercises back to back',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const TemplatesScreen()),
                 ).then((_) => _load()),
               ),
               _menuButton(
