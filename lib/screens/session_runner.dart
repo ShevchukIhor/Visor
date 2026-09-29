@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../core/db/drill.dart';
 import '../core/db/vision_db.dart';
@@ -20,7 +21,14 @@ import '../core/models/session_setup.dart';
 /// type inside one State is not possible. A new key is the idiomatic way to
 /// get a new State, a new controller and a clean dispose.
 class SessionRunner extends StatefulWidget {
-  const SessionRunner({super.key, required this.template});
+  // Not `const`: the assert calls `isRunnable`, which isn't a constant
+  // expression, and a `Template` is always loaded at runtime anyway.
+  SessionRunner({super.key, required this.template})
+      : assert(
+          isRunnable(template.steps),
+          'SessionRunner requires at least one non-rest step; check '
+          'isRunnable(template.steps) before pushing this route.',
+        );
   final Template template;
 
   @override
@@ -45,14 +53,59 @@ class _SessionRunnerState extends State<SessionRunner> {
   final List<_FailedStep> _failedSteps = [];
   bool _retrying = false;
 
+  /// Live progress for the current step, fed by its `onSecondsLeft`/
+  /// `onProgress` callback since that step's own top bar is hidden — this is
+  /// what the session's bar shows in its place. Reset to nothing every time
+  /// the step changes, so a new step never briefly shows the last one's
+  /// numbers.
+  int? _stepSecondsLeft;
+  int _stepCorrect = 0;
+  int _stepTotal = 0;
+
   List<TrainingStep> get _steps => widget.template.steps;
+
+  @override
+  void initState() {
+    super.initState();
+    // Immersive for the whole routine, owned here rather than by each step:
+    // Flutter builds the incoming step's State before disposing the
+    // outgoing one, so if both children set this themselves, the outgoing
+    // step's dispose puts the system bars back right after the incoming step
+    // hid them — from the second step onward the bars just stay visible.
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  }
+
+  @override
+  void dispose() {
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    super.dispose();
+  }
 
   void _next() {
     if (_index + 1 >= _steps.length) {
       setState(() => _done = true);
     } else {
-      setState(() => _index++);
+      setState(() {
+        _index++;
+        _stepSecondsLeft = null;
+        _stepCorrect = 0;
+        _stepTotal = 0;
+      });
     }
+  }
+
+  void _onExerciseTick(int secondsLeft) {
+    if (!mounted) return;
+    setState(() => _stepSecondsLeft = secondsLeft);
+  }
+
+  void _onGameProgress(int secondsLeft, int correct, int total) {
+    if (!mounted) return;
+    setState(() {
+      _stepSecondsLeft = secondsLeft;
+      _stepCorrect = correct;
+      _stepTotal = total;
+    });
   }
 
   /// Records a step's write failure. Called from a step widget's
@@ -88,6 +141,12 @@ class _SessionRunnerState extends State<SessionRunner> {
 
   @override
   Widget build(BuildContext context) {
+    // `isRunnable` is asserted in the constructor, which only fires in
+    // debug/test builds — this is the release-mode guard against the same
+    // condition: an empty step list would otherwise crash on `_steps[0]`,
+    // and a rest-only one would run a chain of countdowns, record nothing,
+    // and still show the "complete" card below as if training had happened.
+    if (_steps.isEmpty || !isRunnable(_steps)) return _nothingToRunCard();
     if (_done) return _finishCard();
     final step = _steps[_index];
     return Scaffold(
@@ -115,12 +174,10 @@ class _SessionRunnerState extends State<SessionRunner> {
           next: index + 1 < _steps.length ? _steps[index + 1].title : null,
           onDone: _next,
         ),
-      DrillStep(:final seconds) => _RestCard(
-          key: key,
-          step: RestStep(cue: 'Not available yet', seconds: seconds),
-          next: null,
-          onDone: _next,
-        ),
+      // Reserved for the psychophysical engine, not rendered until that
+      // lands — advance past it immediately rather than making the user
+      // watch a full-duration countdown for a step that does nothing.
+      DrillStep() => _AutoSkip(key: key, onDone: _next),
     };
   }
 
@@ -138,6 +195,7 @@ class _SessionRunnerState extends State<SessionRunner> {
       gaborTarget: gaborTarget,
       autoStart: true,
       onDone: _next,
+      onSecondsLeft: _onExerciseTick,
       templateId: widget.template.id,
       onRecordFailed: (drill) => _recordFailure(index, drill),
     );
@@ -156,6 +214,7 @@ class _SessionRunnerState extends State<SessionRunner> {
           durationS: seconds, difficulty: difficulty, curved: curved),
       templateId: widget.template.id,
       onDone: _next,
+      onProgress: _onGameProgress,
       onRecordFailed: (drill) => _recordFailure(index, drill),
     );
   }
@@ -168,16 +227,40 @@ class _SessionRunnerState extends State<SessionRunner> {
         IconButton(
           icon: const Icon(Icons.close, color: VisorTheme.text, size: 20),
           tooltip: 'Quit routine',
-          onPressed: () => Navigator.pop(context),
+          // A quit is not a finish — pop `false` so a launcher can tell the
+          // two apart (and knows whether to refresh, e.g., the dashboard).
+          onPressed: () => Navigator.pop(context, false),
         ),
         const SizedBox(width: 6),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('${_index + 1}/$total · ${step.title}',
-                style: const TextStyle(color: VisorTheme.text, fontSize: 14)),
+            Row(children: [
+              Expanded(
+                child: Text('${_index + 1}/$total · ${step.title}',
+                    style:
+                        const TextStyle(color: VisorTheme.text, fontSize: 14)),
+              ),
+              // The current step's own top bar is hidden in session mode
+              // (see ExerciseRunner.onSecondsLeft / GameScreen.onProgress);
+              // this is where its countdown and score reappear instead.
+              if (_stepSecondsLeft != null) ...[
+                const SizedBox(width: 8),
+                Text(_mmss(_stepSecondsLeft!),
+                    style: const TextStyle(
+                        color: VisorTheme.text,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold)),
+              ],
+              if (_stepTotal > 0) ...[
+                const SizedBox(width: 10),
+                Text('✓ $_stepCorrect ✗ ${_stepTotal - _stepCorrect}',
+                    style:
+                        const TextStyle(color: VisorTheme.text, fontSize: 13)),
+              ],
+            ]),
             const SizedBox(height: 4),
             LinearProgressIndicator(
-              value: (_index) / total,
+              value: (_index + 1) / total,
               backgroundColor: VisorTheme.surfaceAlt,
               color: VisorTheme.primary,
               minHeight: 3,
@@ -186,6 +269,12 @@ class _SessionRunnerState extends State<SessionRunner> {
         ),
       ]),
     );
+  }
+
+  String _mmss(int s) {
+    final m = s ~/ 60;
+    final r = s % 60;
+    return '$m:${r.toString().padLeft(2, '0')}';
   }
 
   Widget _finishCard() {
@@ -228,7 +317,7 @@ class _SessionRunnerState extends State<SessionRunner> {
             ],
             const SizedBox(height: 24),
             FilledButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(context, true),
               child: const Text('Done'),
             ),
           ]),
@@ -236,6 +325,66 @@ class _SessionRunnerState extends State<SessionRunner> {
       ),
     );
   }
+
+  /// Shown instead of crashing on an empty step list, or of running a chain
+  /// of countdowns and then claiming training happened for a routine made
+  /// only of rest — see [isRunnable].
+  Widget _nothingToRunCard() {
+    return Scaffold(
+      backgroundColor: VisorTheme.bg,
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.info_outline,
+                color: VisorTheme.textDim, size: 56),
+            const SizedBox(height: 16),
+            Text(widget.template.name,
+                style: const TextStyle(
+                    color: VisorTheme.text,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            const Text(
+              'Nothing to run — this routine has no training steps.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: VisorTheme.textDim, fontSize: 14),
+            ),
+            const SizedBox(height: 24),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Back'),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// Advances past a step with nothing to render, on the next frame. Used for
+/// `DrillStep`, which is reserved for a psychophysical engine that doesn't
+/// exist yet — there is nothing to show, so the routine should not make the
+/// user wait out its duration for a placeholder.
+class _AutoSkip extends StatefulWidget {
+  const _AutoSkip({super.key, required this.onDone});
+  final VoidCallback onDone;
+
+  @override
+  State<_AutoSkip> createState() => _AutoSkipState();
+}
+
+class _AutoSkipState extends State<_AutoSkip> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onDone();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }
 
 /// Countdown between drills. It is interface — knowing what is next — and

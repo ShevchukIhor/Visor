@@ -136,10 +136,17 @@ class ExerciseRunner extends StatefulWidget {
   final bool autoStart;
 
   /// Called instead of showing the terminal card, so a session can advance.
+  /// Also the signal that a session — not this widget — owns the screen's
+  /// chrome: the top bar and the system-bar immersive mode.
   final VoidCallback? onDone;
 
   /// Near-Far target choice, fixed by a routine step.
   final bool gaborTarget;
+
+  /// Reports the remaining seconds every time it changes, so a session that
+  /// owns the chrome (see [onDone]) can show its own countdown instead of
+  /// this widget's suppressed top bar.
+  final ValueChanged<int>? onSecondsLeft;
 
   /// Called with the exact [Drill] whose write failed, in addition to
   /// setting the retry flag. Needed because when [onDone] is set, the
@@ -155,6 +162,7 @@ class ExerciseRunner extends StatefulWidget {
     this.autoStart = false,
     this.onDone,
     this.gaborTarget = false,
+    this.onSecondsLeft,
     this.onRecordFailed,
   });
 
@@ -227,9 +235,13 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
   @override
   void initState() {
     super.initState();
-    // Immersive for this screen only — the dashboard and settings need their
-    // system bars back.
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    if (widget.onDone == null) {
+      // Immersive for this screen only — the dashboard and settings need
+      // their system bars back. In session mode `SessionRunner` owns this
+      // for the whole routine instead, so the bars don't flash back on
+      // between steps.
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    }
     _ctrl = AnimationController(
       vsync: this,
       duration: Duration(milliseconds: _loopMs),
@@ -239,7 +251,12 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
       _secondsLeft = _duration;
     }
     _nearFarGabor = widget.gaborTarget;
-    if (widget.gaborTarget) _loadGaborImages(count: 6);
+    // Gated on the type, not just the flag: `gaborTarget` only means
+    // anything for Near-Far, and decoding six unused 192×192 patches for
+    // any other exercise would be pure waste.
+    if (widget.gaborTarget && widget.type == ExerciseType.nearFar) {
+      _loadGaborImages(count: 6);
+    }
     if (widget.type == ExerciseType.orbs) {
       _loadGaborImages(count: 1);
     }
@@ -285,7 +302,9 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
     for (final img in _gaborImages) {
       img.dispose();
     }
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    if (widget.onDone == null) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    }
     super.dispose();
   }
 
@@ -295,6 +314,7 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
       _finished = false;
       _secondsLeft = _duration;
     });
+    widget.onSecondsLeft?.call(_secondsLeft);
     _startedAt = DateTime.now();
     // The animation only needs to run while the drill does; repeating it
     // behind the duration picker and the finish card just burns battery.
@@ -307,6 +327,7 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
       if (!mounted) return;
       final done = _secondsLeft <= 1;
       setState(() => _secondsLeft = done ? 0 : _secondsLeft - 1);
+      widget.onSecondsLeft?.call(_secondsLeft);
       if (done) _finish();
     });
   }
@@ -333,7 +354,6 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
   /// the today-counter and the history see it. Exiting early records nothing.
   Future<void> _record() async {
     if (_saved) return;
-    _saved = true;
     final drill = drillForExercise(
       type: widget.type,
       seconds: _duration,
@@ -348,7 +368,11 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
       startedAt: _startedAt ?? DateTime.now(),
       templateId: widget.templateId,
     );
+    // The guard is taken only once there is something to guard: taking it
+    // before this null check would make a refused (not-completed) call
+    // permanently block a real one from ever running.
     if (drill == null) return;
+    _saved = true;
     try {
       await VisionDb.instance.insertDrill(drill);
       await ReminderService.markTrainedToday();
@@ -407,7 +431,10 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
             ),
           ),
           // Top bar: close button + title + countdown (when running).
-          SafeArea(child: _topBar()),
+          // Suppressed in session mode — SessionRunner owns all chrome then
+          // (see [onSecondsLeft]), so this doesn't paint a second bar over
+          // its close button and step label.
+          if (widget.onDone == null) SafeArea(child: _topBar()),
           // Bottom hint while running.
           if (_running)
             SafeArea(
