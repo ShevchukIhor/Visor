@@ -148,6 +148,15 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
   bool _finished = false;
   Timer? _ticker;
 
+  /// When this run actually started — set in [_start], not back-computed
+  /// from the end time, so a backgrounded app doesn't shift the recorded
+  /// interval or file the drill under the wrong calendar day.
+  DateTime? _startedAt;
+
+  /// Set when writing the drill failed; drives the retry affordance in the
+  /// finish overlay. Mirrors `game_screen.dart`'s `_saveError`.
+  bool _saveError = false;
+
   // Session-level randomness + clock/resources for the Gabor exercises.
   late final int _seed = DateTime.now().microsecondsSinceEpoch & 0x7fffffff;
   /// Drives the orbs' slow cycles. Started by [_start] so the orbs begin
@@ -241,6 +250,7 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
       _finished = false;
       _secondsLeft = _duration;
     });
+    _startedAt = DateTime.now();
     // The animation only needs to run while the drill does; repeating it
     // behind the duration picker and the finish card just burns battery.
     _clock
@@ -276,15 +286,29 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
       final drill = drillForExercise(
         type: widget.type,
         seconds: _duration,
-        completed: true,
-        endedAt: DateTime.now(),
+        // Not a literal: from the exit path this is false and the builder
+        // refuses, which is what makes the guard real rather than a habit.
+        completed: _finished,
+        // The `??` fallback is unreachable: `_record` only runs from
+        // `_finish` (called from the ticker started in `_start`, which sets
+        // `_startedAt` first) or from the Retry button, which only exists
+        // once `_finished` is true — i.e. after `_finish` already ran. It is
+        // kept only as a type-safe default, never as a real end-time stamp.
+        startedAt: _startedAt ?? DateTime.now(),
         templateId: widget.templateId,
       );
       if (drill == null) return;
       await VisionDb.instance.insertDrill(drill);
       await ReminderService.markTrainedToday();
+      if (!mounted) return;
+      setState(() => _saveError = false);
     } catch (e) {
+      // Losing a session silently while the screen says "complete" is worse
+      // than an ugly message: the streak and history would disagree with
+      // what the user just did.
       debugPrint('Failed to record exercise: $e');
+      if (!mounted) return;
+      setState(() => _saveError = true);
     }
   }
 
@@ -560,6 +584,20 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
           children: [
             const Text('Exercise complete',
                 style: TextStyle(color: VisorTheme.text, fontSize: 20)),
+            if (_saveError) ...[
+              const SizedBox(height: 16),
+              const Text(
+                'Could not save this exercise — your streak and history may '
+                'not include it.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: VisorTheme.danger, fontSize: 13),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: _record,
+                child: const Text('Retry save'),
+              ),
+            ],
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,

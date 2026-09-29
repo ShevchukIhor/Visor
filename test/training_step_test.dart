@@ -111,14 +111,14 @@ void main() {
   });
 
   group('drillForExercise', () {
-    final ended = DateTime(2026, 3, 15, 9, 30);
+    final started = DateTime(2026, 3, 15, 9, 29);
 
     test('a completed exercise becomes a drill row', () {
       final d = drillForExercise(
         type: ExerciseType.pursuit,
         seconds: 60,
         completed: true,
-        endedAt: ended,
+        startedAt: started,
         templateId: 7,
       );
       expect(d, isNotNull);
@@ -127,8 +127,8 @@ void main() {
       expect(d.completed, isTrue);
       expect(d.templateId, 7);
       expect(d.params, contains('pursuit'));
-      // Backdated by its own length: the drill occupies the time it ran.
-      expect(d.startedAt, ended.subtract(const Duration(seconds: 60)));
+      // The real start time, not one back-computed from the end.
+      expect(d.startedAt, started);
     });
 
     test('an abandoned exercise produces nothing to record', () {
@@ -136,7 +136,7 @@ void main() {
         type: ExerciseType.pursuit,
         seconds: 60,
         completed: false,
-        endedAt: ended,
+        startedAt: started,
       );
       expect(d, isNull);
     });

@@ -142,12 +142,12 @@ Drill? drillForExercise({
   required ExerciseType type,
   required int seconds,
   required bool completed,
-  required DateTime endedAt,
+  required DateTime startedAt,
   int? templateId,
 }) {
   if (!completed) return null;
   return Drill(
-    startedAt: endedAt.subtract(Duration(seconds: seconds)),
+    startedAt: startedAt,
     task: taskExercise,
     durationS: seconds,
     completed: true,
