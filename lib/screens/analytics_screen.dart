@@ -1,13 +1,11 @@
-import 'dart:math' as math;
-
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../core/analytics/chart_math.dart';
 import '../core/db/vision_db.dart';
 import '../core/theme/visor_theme.dart';
+import '../widgets/accuracy_chart.dart';
 
-/// Analytics: score trend chart + session history list.
+/// Analytics: daily accuracy chart + session history list.
 class AnalyticsScreen extends StatefulWidget {
   const AnalyticsScreen({super.key});
 
@@ -36,6 +34,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final legend = legendOf(aggregateByDay(_sessions.map(toSample).toList()));
     return Scaffold(
       backgroundColor: VisorTheme.bg,
       appBar: AppBar(
@@ -54,7 +53,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     const Padding(
                       padding: EdgeInsets.all(12),
                       child: Text(
-                          'Score trend',
+                          'Daily accuracy',
                           style: TextStyle(
                               color: VisorTheme.textDim, fontSize: 13)),
                     ),
@@ -63,9 +62,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       child: Padding(
                         padding:
                             const EdgeInsets.symmetric(horizontal: 16),
-                        child: _ScoreChart(sessions: _sessions),
+                        child: AccuracyChart(sessions: _sessions),
                       ),
                     ),
+                    const SizedBox(height: 6),
+                    AccuracyChartLegend(difficulties: legend),
                     const SizedBox(height: 8),
                     const Text(
                         'History',
@@ -128,167 +129,4 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       },
     );
   }
-}
-
-class _ScoreChart extends StatelessWidget {
-  final List<VisionSession> sessions;
-  const _ScoreChart({required this.sessions});
-
-  @override
-  Widget build(BuildContext context) {
-    final pts = sessions
-        .map((s) => _ChartPoint(s.score, s.startedAt, s.id))
-        .toList()
-      // Deterministic order: time, then id. A plain time sort is unstable,
-      // so two sessions recorded in the same millisecond could swap and
-      // reshape the line (the 100-peak would jump off the middle).
-      ..sort((a, b) {
-        final c = a.time.compareTo(b.time);
-        return c != 0 ? c : a.id.compareTo(b.id);
-      });
-    return CustomPaint(painter: _ChartPainter(points: pts));
-  }
-}
-
-class _ChartPoint {
-  final double score;
-  final DateTime time;
-  final int id;
-  const _ChartPoint(this.score, this.time, this.id);
-
-  @override
-  bool operator ==(Object other) =>
-      other is _ChartPoint &&
-      other.score == score &&
-      other.time == time &&
-      other.id == id;
-
-  @override
-  int get hashCode => Object.hash(score, time, id);
-}
-
-class _ChartPainter extends CustomPainter {
-  final List<_ChartPoint> points;
-  _ChartPainter({required this.points});
-
-  static const double padL = 34;
-  static const double padR = 14;
-  static const double padT = 22;
-  static const double padB = 20;
-
-  static String _date(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}';
-
-  void _label(
-      Canvas canvas,
-      TextPainter tp,
-      String text,
-      TextStyle style,
-      Offset pos) {
-    tp.text = TextSpan(text: text, style: style);
-    tp.layout(maxWidth: double.infinity);
-    tp.paint(canvas, pos);
-  }
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (points.isEmpty) return;
-    final w = size.width;
-    final h = size.height;
-    final plotW = math.max(w - padL - padR, 1);
-    final plotH = math.max(h - padT - padB, 1);
-    final baseY = padT + plotH;
-
-    final maxScore = points.reduce((a, b) => a.score > b.score ? a : b).score;
-    final yMax = niceCeil(maxScore);
-
-    final tp = TextPainter(textDirection: TextDirection.ltr);
-    final dimStyle = TextStyle(color: VisorTheme.textDim, fontSize: 10);
-
-    // grid: 0 / 50% / 100% with numeric Y labels.
-    final grid = Paint()
-      ..color = VisorTheme.textDim.withValues(alpha: 0.25)
-      ..strokeWidth = 1;
-    for (final f in [0.0, 0.5, 1.0]) {
-      final y = padT + plotH * (1 - f);
-      canvas.drawLine(Offset(padL, y), Offset(padL + plotW, y), grid);
-      // yMax comes from niceCeil, so 0 / 0.5 / 1 of it are already round.
-      _label(
-          canvas,
-          tp,
-          (f * yMax).toStringAsFixed(0),
-          dimStyle,
-          Offset(padL - 28, y - 7));
-    }
-
-    final n = points.length;
-    Offset xy(int i) {
-      final x = padL + (n <= 1 ? plotW / 2 : plotW * (i / (n - 1)));
-      final y = baseY - (points[i].score / yMax) * plotH;
-      return Offset(x, y);
-    }
-
-    // x-axis date labels (first / last).
-    if (n >= 2) {
-      _label(canvas, tp, _date(points.first.time), dimStyle,
-          Offset(padL, baseY + 6));
-      _label(canvas, tp, _date(points.last.time), dimStyle,
-          Offset(padL + plotW - 28, baseY + 6));
-    }
-
-    if (n == 1) {
-      final p = xy(0);
-      canvas.drawCircle(p, 4, Paint()..color = VisorTheme.primary);
-      _label(
-          canvas,
-          tp,
-          points.first.score.toStringAsFixed(0),
-          TextStyle(
-              color: VisorTheme.text,
-              fontSize: 12,
-              fontWeight: FontWeight.bold),
-          Offset(p.dx - 12, p.dy - 22));
-      return;
-    }
-
-    final pts = [for (var i = 0; i < n; i++) xy(i)];
-
-    final line = Paint()
-      ..color = VisorTheme.primary
-      ..strokeWidth = 2.5
-      ..style = PaintingStyle.stroke;
-    final fill = Paint()
-      ..color = VisorTheme.primary.withValues(alpha: 0.15)
-      ..style = PaintingStyle.fill;
-    final dot = Paint()..color = VisorTheme.primary;
-
-    final path = Path()..moveTo(pts.first.dx, pts.first.dy);
-    for (final p in pts.skip(1)) {
-      path.lineTo(p.dx, p.dy);
-    }
-    final fillPath = Path.from(path)
-      ..lineTo(pts.last.dx, baseY)
-      ..lineTo(pts.first.dx, baseY)
-      ..close();
-    canvas.drawPath(fillPath, fill);
-    canvas.drawPath(path, line);
-    for (final p in pts) {
-      canvas.drawCircle(p, 3, dot);
-    }
-
-    final lp = pts.last;
-    _label(
-        canvas,
-        tp,
-        points.last.score.toStringAsFixed(0),
-        TextStyle(
-            color: VisorTheme.text, fontSize: 12, fontWeight: FontWeight.bold),
-        Offset(lp.dx - 12, lp.dy - 20 < 4 ? 4 : lp.dy - 20));
-  }
-
-  @override
-  bool shouldRepaint(covariant _ChartPainter old) =>
-      // A fresh list is built on every rebuild, so identity would always
-      // differ; compare the points themselves.
-      !listEquals(old.points, points);
 }
