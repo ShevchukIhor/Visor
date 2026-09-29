@@ -63,6 +63,14 @@ void main() {
     expect(rows.first['completed'], 1);
     expect(rows.first['threshold'], isNull);
     expect(rows.first['template_id'], isNull);
+    // The v3 `total`/`correct` columns are easy to swap by accident during a
+    // rename — `total` becomes `trials`, `correct` stays `correct` — and a
+    // swap would ship green without this pinned to the source row's values.
+    expect(rows.first['trials'], 10);
+    expect(rows.first['correct'], 8);
+    expect(rows.first['duration_s'], 120);
+    expect(rows.first['started_at'],
+        DateTime(2026, 3, 10).millisecondsSinceEpoch);
     expect(rows.last['params'], contains('insane'));
     await db.close();
   });

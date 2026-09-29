@@ -37,10 +37,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final legend = legendOf(aggregateByDay([
-      for (final d in _drills)
-        if (d.task == 'gabor_grid' && d.trials > 0) toSample(d),
-    ]));
+    final legend = legendOf(aggregateByDay(gaborSamples(_drills).toList()));
     return Scaffold(
       backgroundColor: VisorTheme.bg,
       appBar: AppBar(
@@ -87,7 +84,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   /// Grid size and stripe pattern, stored in `params` for the Gabor game.
   /// Other tasks (an exercise, later a measured drill) have no such shape.
   (int, String)? _gaborParams(Drill d) {
-    if (d.task != 'gabor_grid' || d.params == null) return null;
+    if (d.task != taskGaborGrid || d.params == null) return null;
     final m = jsonDecode(d.params!) as Map<String, Object?>;
     final grid = m['grid'] as int?;
     final pattern = m['pattern'] as String?;

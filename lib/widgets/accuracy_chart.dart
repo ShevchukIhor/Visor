@@ -20,10 +20,7 @@ class AccuracyChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final points = aggregateByDay([
-      for (final d in drills)
-        if (d.task == 'gabor_grid' && d.trials > 0) toSample(d),
-    ]);
+    final points = aggregateByDay(gaborSamples(drills).toList());
     return CustomPaint(
       painter: AccuracyChartPainter(
         points: points,
@@ -39,6 +36,15 @@ SessionSample toSample(Drill d) => SessionSample.fromCounts(
       total: d.trials,
       difficulty: difficultyByName(_difficultyOf(d)),
     );
+
+/// Drills the chart (and the legend that describes it) actually plot: Gabor
+/// games with at least one answered trial. Kept as the one place this
+/// predicate lives — the chart and the legend must never disagree about which
+/// drills they are describing.
+Iterable<SessionSample> gaborSamples(Iterable<Drill> drills) => [
+      for (final d in drills)
+        if (d.task == taskGaborGrid && d.trials > 0) toSample(d),
+    ];
 
 /// The difficulty moved into the params JSON in schema v4.
 String _difficultyOf(Drill d) {

@@ -74,8 +74,7 @@ void main() {
           ),
         ),
         AccuracyChartLegend(
-          difficulties:
-              legendOf(aggregateByDay(sessions.map(toSample).toList())),
+          difficulties: legendOf(aggregateByDay(gaborSamples(sessions).toList())),
         ),
       ],
     );

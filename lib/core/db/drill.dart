@@ -1,3 +1,9 @@
+/// `Drill.task` for the Gabor patch discrimination game. Named once so tasks
+/// 2-8, which add more task ids to the same table (exercises, measured
+/// psychophysical drills), never risk a typo'd literal silently falling out
+/// of a filter.
+const String taskGaborGrid = 'gabor_grid';
+
 /// One recorded unit of training: a Gabor game, an eye exercise, or — once the
 /// psychophysical engine lands — a measured drill. Replaces VisionSession.
 class Drill {

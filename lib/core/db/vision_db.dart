@@ -164,7 +164,7 @@ class VisionDb {
       });
       batch.insert('drills', {
         'started_at': r['started_at'],
-        'task': 'gabor_grid',
+        'task': taskGaborGrid,
         'duration_s': r['duration_s'],
         'completed': 1,
         'trials': r['total'],
@@ -221,7 +221,7 @@ class VisionDb {
   Future<double> bestScore() async {
     final d = await db;
     final rows = await d.rawQuery(
-        "SELECT MAX(score) AS m FROM drills WHERE task = 'gabor_grid'");
+        'SELECT MAX(score) AS m FROM drills WHERE task = ?', [taskGaborGrid]);
     return ((rows.first['m'] as num?) ?? 0).toDouble();
   }
 
@@ -230,12 +230,18 @@ class VisionDb {
   /// the streak.
   Future<int> streak() async {
     final d = await db;
+    return streakFrom(d, DateTime.now());
+  }
+
+  /// Extracted from [streak] so a test can drive the closing-day SQL against
+  /// an in-memory database, the same way [migrate] is tested.
+  static Future<int> streakFrom(Database d, DateTime now) async {
     final rows = await d.rawQuery(
       "SELECT DISTINCT date(started_at/1000, 'unixepoch', 'localtime') AS day "
       'FROM drills WHERE completed = 1 AND duration_s >= 30',
     );
     final days = rows.map((r) => r['day'] as String).toSet();
-    return computeStreak(days, DateTime.now());
+    return computeStreak(days, now);
   }
 
   /// Composite score for a finished session.

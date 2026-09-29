@@ -84,7 +84,7 @@ class _GameScreenState extends State<GameScreen>
     try {
       await VisionDb.instance.insertDrill(Drill(
         startedAt: _startedAt ?? DateTime.now(),
-        task: 'gabor_grid',
+        task: taskGaborGrid,
         durationS: widget.setup.durationS,
         completed: true,
         trials: _total,
