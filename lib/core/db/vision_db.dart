@@ -91,6 +91,10 @@ class VisionDb {
     }
   }
 
+  /// The v4 DDL, for tests that need the schema without the app's database
+  /// file. Production goes through [_open].
+  static Future<void> createV4ForTest(Database d) => _createV4(d);
+
   static Future<void> _createV4(Database d) async {
     await d.execute('''
       CREATE TABLE viewing_geometry (
