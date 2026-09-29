@@ -109,4 +109,36 @@ void main() {
       expect(w.where((s) => s.toLowerCase().contains('rest')), hasLength(1));
     });
   });
+
+  group('drillForExercise', () {
+    final ended = DateTime(2026, 3, 15, 9, 30);
+
+    test('a completed exercise becomes a drill row', () {
+      final d = drillForExercise(
+        type: ExerciseType.pursuit,
+        seconds: 60,
+        completed: true,
+        endedAt: ended,
+        templateId: 7,
+      );
+      expect(d, isNotNull);
+      expect(d!.task, 'exercise');
+      expect(d.durationS, 60);
+      expect(d.completed, isTrue);
+      expect(d.templateId, 7);
+      expect(d.params, contains('pursuit'));
+      // Backdated by its own length: the drill occupies the time it ran.
+      expect(d.startedAt, ended.subtract(const Duration(seconds: 60)));
+    });
+
+    test('an abandoned exercise produces nothing to record', () {
+      final d = drillForExercise(
+        type: ExerciseType.pursuit,
+        seconds: 60,
+        completed: false,
+        endedAt: ended,
+      );
+      expect(d, isNull);
+    });
+  });
 }

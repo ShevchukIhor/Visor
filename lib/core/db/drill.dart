@@ -4,6 +4,9 @@
 /// of a filter.
 const String taskGaborGrid = 'gabor_grid';
 
+/// `Drill.task` for a completed eye exercise (convergence, pursuit, etc).
+const String taskExercise = 'exercise';
+
 /// One recorded unit of training: a Gabor game, an eye exercise, or — once the
 /// psychophysical engine lands — a measured drill. Replaces VisionSession.
 class Drill {

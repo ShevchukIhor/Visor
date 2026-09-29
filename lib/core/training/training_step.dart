@@ -5,6 +5,9 @@
 /// widget to exercise, which is what makes them directly testable.
 library;
 
+import 'dart:convert';
+
+import '../db/drill.dart';
 import '../exercises/exercise_painter.dart';
 import '../gabor/gabor_patch.dart';
 
@@ -128,4 +131,27 @@ List<String> templateWarnings(List<TrainingStep> steps) {
     }
   }
   return out;
+}
+
+/// The `drills` row for a finished exercise, or null when it did not finish.
+///
+/// Returning null rather than writing an "incomplete" row is the guard: an
+/// exercise the user walked out of is not training, and the streak must not
+/// see it.
+Drill? drillForExercise({
+  required ExerciseType type,
+  required int seconds,
+  required bool completed,
+  required DateTime endedAt,
+  int? templateId,
+}) {
+  if (!completed) return null;
+  return Drill(
+    startedAt: endedAt.subtract(Duration(seconds: seconds)),
+    task: taskExercise,
+    durationS: seconds,
+    completed: true,
+    templateId: templateId,
+    params: jsonEncode({'type': type.name}),
+  );
 }

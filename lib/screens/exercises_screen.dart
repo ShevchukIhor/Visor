@@ -5,9 +5,12 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../core/db/vision_db.dart';
 import '../core/exercises/exercise_painter.dart';
 import '../core/gabor/gabor_patch.dart';
+import '../core/reminder/reminder_service.dart';
 import '../core/theme/visor_theme.dart';
+import '../core/training/training_step.dart';
 
 /// Per-exercise icon for the list view.
 extension ExerciseIcon on ExerciseType {
@@ -120,7 +123,13 @@ class ExercisesScreen extends StatelessWidget {
 /// close button in the top bar exits early at any time.
 class ExerciseRunner extends StatefulWidget {
   final ExerciseType type;
-  const ExerciseRunner({super.key, required this.type});
+
+  /// Set when this exercise runs as one step of a saved template, so the
+  /// recorded drill can be attributed to it. Null for a standalone exercise
+  /// launched from the exercises list.
+  final int? templateId;
+
+  const ExerciseRunner({super.key, required this.type, this.templateId});
 
   @override
   State<ExerciseRunner> createState() => _ExerciseRunnerState();
@@ -255,9 +264,32 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
       _running = false;
       _finished = true;
     });
+    // A completed exercise is training: record it here, at natural
+    // completion, and nowhere else (see _exit below).
+    _record();
   }
 
-  /// Exit immediately — works at any point, including mid-exercise.
+  /// A completed exercise is training: it belongs in `drills` so the streak,
+  /// the today-counter and the history see it. Exiting early records nothing.
+  Future<void> _record() async {
+    try {
+      final drill = drillForExercise(
+        type: widget.type,
+        seconds: _duration,
+        completed: true,
+        endedAt: DateTime.now(),
+        templateId: widget.templateId,
+      );
+      if (drill == null) return;
+      await VisionDb.instance.insertDrill(drill);
+      await ReminderService.markTrainedToday();
+    } catch (e) {
+      debugPrint('Failed to record exercise: $e');
+    }
+  }
+
+  /// Exit immediately — works at any point, including mid-exercise. Must
+  /// never call [_record]: an exercise closed early is not training.
   void _exit() {
     _ticker?.cancel();
     _ctrl.stop();
