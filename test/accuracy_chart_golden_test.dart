@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:visor/core/analytics/chart_math.dart';
+import 'package:visor/core/db/drill.dart';
 import 'package:visor/core/db/vision_db.dart';
 import 'package:visor/core/gabor/gabor_patch.dart';
 import 'package:visor/core/theme/visor_theme.dart';
@@ -32,26 +34,30 @@ void main() {
   });
 
   int id = 0;
-  VisionSession session(
+  Drill session(
     DateTime at, {
     int correct = 8,
     int total = 10,
     Difficulty difficulty = Difficulty.easy,
   }) =>
-      VisionSession(
+      Drill(
         id: ++id,
         startedAt: at,
+        task: 'gabor_grid',
         durationS: 60,
-        difficulty: difficulty.name,
-        grid: difficulty.grid,
-        pattern: 'straight',
+        completed: true,
+        trials: total,
         correct: correct,
-        total: total,
         score: VisionDb.computeScore(
             correct: correct, total: total, d: difficulty),
+        params: jsonEncode({
+          'difficulty': difficulty.name,
+          'grid': difficulty.grid,
+          'pattern': 'straight',
+        }),
       );
 
-  Widget frame(String caption, List<VisionSession> sessions, DateTime now) {
+  Widget frame(String caption, List<Drill> sessions, DateTime now) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -64,7 +70,7 @@ void main() {
           height: 190,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: AccuracyChart(sessions: sessions, now: now),
+            child: AccuracyChart(drills: sessions, now: now),
           ),
         ),
         AccuracyChartLegend(

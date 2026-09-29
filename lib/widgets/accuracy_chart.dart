@@ -1,25 +1,29 @@
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../core/analytics/chart_math.dart';
-import '../core/db/vision_db.dart';
+import '../core/db/drill.dart';
 import '../core/gabor/gabor_patch.dart';
 import '../core/theme/visor_theme.dart';
 
 class AccuracyChart extends StatelessWidget {
-  final List<VisionSession> sessions;
+  final List<Drill> drills;
 
   /// "Today" for the right edge of the axis. Injectable so the layout can be
   /// rendered against fixed dates in tests; the app leaves it null.
   final DateTime? now;
 
-  const AccuracyChart({super.key, required this.sessions, this.now});
+  const AccuracyChart({super.key, required this.drills, this.now});
 
   @override
   Widget build(BuildContext context) {
-    final points = aggregateByDay(sessions.map(toSample).toList());
+    final points = aggregateByDay([
+      for (final d in drills)
+        if (d.task == 'gabor_grid' && d.trials > 0) toSample(d),
+    ]);
     return CustomPaint(
       painter: AccuracyChartPainter(
         points: points,
@@ -29,12 +33,19 @@ class AccuracyChart extends StatelessWidget {
   }
 }
 
-SessionSample toSample(VisionSession s) => SessionSample.fromCounts(
-      at: s.startedAt,
-      correct: s.correct,
-      total: s.total,
-      difficulty: difficultyByName(s.difficulty),
+SessionSample toSample(Drill d) => SessionSample.fromCounts(
+      at: d.startedAt,
+      correct: d.correct,
+      total: d.trials,
+      difficulty: difficultyByName(_difficultyOf(d)),
     );
+
+/// The difficulty moved into the params JSON in schema v4.
+String _difficultyOf(Drill d) {
+  if (d.params == null) return '';
+  final m = jsonDecode(d.params!) as Map<String, Object?>;
+  return (m['difficulty'] as String?) ?? '';
+}
 
 /// Colour ramp for the difficulty a day was trained at: calm green through to
 /// red as the level rises, reusing the existing palette rather than inventing

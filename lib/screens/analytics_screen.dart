@@ -1,11 +1,14 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../core/analytics/chart_math.dart';
+import '../core/db/drill.dart';
 import '../core/db/vision_db.dart';
 import '../core/theme/visor_theme.dart';
 import '../widgets/accuracy_chart.dart';
 
-/// Analytics: daily accuracy chart + session history list.
+/// Analytics: daily accuracy chart + drill history list.
 class AnalyticsScreen extends StatefulWidget {
   const AnalyticsScreen({super.key});
 
@@ -14,7 +17,7 @@ class AnalyticsScreen extends StatefulWidget {
 }
 
 class _AnalyticsScreenState extends State<AnalyticsScreen> {
-  List<VisionSession> _sessions = [];
+  List<Drill> _drills = [];
   bool _loading = true;
 
   @override
@@ -24,17 +27,20 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   }
 
   Future<void> _load() async {
-    final s = await VisionDb.instance.allSessions();
+    final d = await VisionDb.instance.allDrills();
     if (!mounted) return;
     setState(() {
-      _sessions = s;
+      _drills = d;
       _loading = false;
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final legend = legendOf(aggregateByDay(_sessions.map(toSample).toList()));
+    final legend = legendOf(aggregateByDay([
+      for (final d in _drills)
+        if (d.task == 'gabor_grid' && d.trials > 0) toSample(d),
+    ]));
     return Scaffold(
       backgroundColor: VisorTheme.bg,
       appBar: AppBar(
@@ -44,9 +50,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _sessions.isEmpty
+          : _drills.isEmpty
               ? const Center(
-                  child: Text('No sessions yet',
+                  child: Text('No drills yet',
                       style: TextStyle(color: VisorTheme.textDim)))
               : Column(
                   children: [
@@ -62,7 +68,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       child: Padding(
                         padding:
                             const EdgeInsets.symmetric(horizontal: 16),
-                        child: AccuracyChart(sessions: _sessions),
+                        child: AccuracyChart(drills: _drills),
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -78,17 +84,32 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
+  /// Grid size and stripe pattern, stored in `params` for the Gabor game.
+  /// Other tasks (an exercise, later a measured drill) have no such shape.
+  (int, String)? _gaborParams(Drill d) {
+    if (d.task != 'gabor_grid' || d.params == null) return null;
+    final m = jsonDecode(d.params!) as Map<String, Object?>;
+    final grid = m['grid'] as int?;
+    final pattern = m['pattern'] as String?;
+    if (grid == null || pattern == null) return null;
+    return (grid, pattern);
+  }
+
   Widget _historyList() {
     return ListView.separated(
       padding: const EdgeInsets.all(16),
-      itemCount: _sessions.length,
+      itemCount: _drills.length,
       separatorBuilder: (_, _) => const SizedBox(height: 6),
       itemBuilder: (ctx, i) {
-        final s = _sessions[i];
-        final dt = s.startedAt;
+        final d = _drills[i];
+        final dt = d.startedAt;
         final date =
             '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')} '
             '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+        final gabor = _gaborParams(d);
+        final label = gabor != null
+            ? '${gabor.$1}\u00D7${gabor.$1} \u00B7 ${gabor.$2} \u00B7 ${d.durationS ~/ 60} min'
+            : '${d.task} \u00B7 ${d.durationS ~/ 60} min';
         return Container(
           padding:
               const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -102,8 +123,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                        '${s.grid}\u00D7${s.grid} \u00B7 ${s.pattern} \u00B7 ${s.durationS ~/ 60} min',
+                    Text(label,
                         style: const TextStyle(
                             color: VisorTheme.text, fontSize: 14)),
                     Text(date,
@@ -112,12 +132,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   ],
                 ),
               ),
-              Text('${s.correct}/${s.total}',
-                  style: const TextStyle(
-                      color: VisorTheme.text, fontSize: 14)),
-              const SizedBox(width: 12),
+              if (d.trials > 0) ...[
+                Text('${d.correct}/${d.trials}',
+                    style: const TextStyle(
+                        color: VisorTheme.text, fontSize: 14)),
+                const SizedBox(width: 12),
+              ],
               Text(
-                s.score.toStringAsFixed(0),
+                d.score?.toStringAsFixed(0) ?? '\u2014',
                 style: const TextStyle(
                     color: VisorTheme.primary,
                     fontSize: 16,

@@ -31,7 +31,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _load() async {
     final streak = await VisionDb.instance.streak();
-    final today = await VisionDb.instance.sessionsOnDay(DateTime.now());
+    final today = await VisionDb.instance.drillsOnDay(DateTime.now());
     final best = await VisionDb.instance.bestScore();
     final version = await AppInfo.version();
     if (!mounted) return;

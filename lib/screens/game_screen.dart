@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../core/db/drill.dart';
 import '../core/db/vision_db.dart';
 import '../core/gabor/gabor_patch.dart';
 import '../core/models/session_setup.dart';
@@ -17,8 +19,9 @@ import '../widgets/gabor_view.dart';
 /// and shows the next trial until the timer runs out.
 class GameScreen extends StatefulWidget {
   final SessionSetup setup;
+  final int? templateId;
 
-  const GameScreen({super.key, required this.setup});
+  const GameScreen({super.key, required this.setup, this.templateId});
 
   @override
   State<GameScreen> createState() => _GameScreenState();
@@ -79,16 +82,20 @@ class _GameScreenState extends State<GameScreen>
       d: widget.setup.difficulty,
     );
     try {
-      await VisionDb.instance.insertSession(VisionSession(
-        id: 0,
+      await VisionDb.instance.insertDrill(Drill(
         startedAt: _startedAt ?? DateTime.now(),
+        task: 'gabor_grid',
         durationS: widget.setup.durationS,
-        difficulty: widget.setup.difficulty.name,
-        grid: _grid,
-        pattern: widget.setup.curved ? 'curved' : 'straight',
+        completed: true,
+        trials: _total,
         correct: _correct,
-        total: _total,
         score: score,
+        templateId: widget.templateId,
+        params: jsonEncode({
+          'difficulty': widget.setup.difficulty.name,
+          'grid': _grid,
+          'pattern': widget.setup.curved ? 'curved' : 'straight',
+        }),
       ));
       // Tell the native reminder layer we trained today.
       await ReminderService.markTrainedToday();
