@@ -157,6 +157,13 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
   /// finish overlay. Mirrors `game_screen.dart`'s `_saveError`.
   bool _saveError = false;
 
+  /// Guards against a double write: `_record` has two call sites (natural
+  /// completion in `_finish` and the Retry button), and a fast double tap on
+  /// Retry would otherwise start two concurrent inserts. Mirrors
+  /// `game_screen.dart`'s `_saved` flag, including resetting it on failure
+  /// so a genuine error stays retryable.
+  bool _saved = false;
+
   // Session-level randomness + clock/resources for the Gabor exercises.
   late final int _seed = DateTime.now().microsecondsSinceEpoch & 0x7fffffff;
   /// Drives the orbs' slow cycles. Started by [_start] so the orbs begin
@@ -282,6 +289,8 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
   /// A completed exercise is training: it belongs in `drills` so the streak,
   /// the today-counter and the history see it. Exiting early records nothing.
   Future<void> _record() async {
+    if (_saved) return;
+    _saved = true;
     try {
       final drill = drillForExercise(
         type: widget.type,
@@ -307,6 +316,7 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
       // than an ugly message: the streak and history would disagree with
       // what the user just did.
       debugPrint('Failed to record exercise: $e');
+      _saved = false;
       if (!mounted) return;
       setState(() => _saveError = true);
     }
@@ -594,7 +604,10 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
               ),
               const SizedBox(height: 8),
               TextButton(
-                onPressed: _record,
+                onPressed: () {
+                  setState(() => _saveError = false);
+                  _record();
+                },
                 child: const Text('Retry save'),
               ),
             ],
