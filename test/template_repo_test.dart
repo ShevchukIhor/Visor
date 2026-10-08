@@ -152,6 +152,22 @@ void main() {
     }
   });
 
+  test('week labels are seven entries, Monday first, with gaps kept', () async {
+    await repo.seedPresets();
+    final all = await repo.all();
+    await repo.setWeekday(DateTime.monday, all[0].id);
+    await repo.setWeekday(DateTime.friday, all[1].id);
+
+    final labels = await weekLabels(repo);
+
+    expect(labels, hasLength(7));
+    expect(labels[0], contains(all[0].name)); // Monday
+    expect(labels[4], contains(all[1].name)); // Friday
+    expect(labels[1], isNull); // Tuesday: rest day
+    expect(labels[6], isNull); // Sunday
+    expect(labels[0], contains('min'));
+  });
+
   test(
       'deleting a builtin template is refused, but a user template deletes '
       'normally', () async {

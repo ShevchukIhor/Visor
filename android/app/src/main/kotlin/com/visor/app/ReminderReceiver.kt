@@ -8,6 +8,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import java.util.Calendar
 
 /**
  * Fired by AlarmManager at the user's chosen daily time. Checks whether the
@@ -43,10 +44,16 @@ class ReminderReceiver : BroadcastReceiver() {
 
   private fun handleReminder(context: Context) {
     if (ReminderStore.trainedToday(context)) return
+    // Resolved now, not when the alarm was scheduled: the app may not have run
+    // for days, so anything stored as "today's routine" would be stale.
+    val cal = Calendar.getInstance()
+    val iso = ((cal.get(Calendar.DAY_OF_WEEK) + 5) % 7) + 1  // Sun=1 → Mon=1
+    val label = ReminderStore.labelFor(context, iso)
     showNotification(
       context,
       "Keep your streak alive",
-      "You haven't trained today — 1 minute keeps your streak going.",
+      if (label != null) "Today: $label"
+      else "You haven't trained today — 1 minute keeps your streak going.",
     )
   }
 

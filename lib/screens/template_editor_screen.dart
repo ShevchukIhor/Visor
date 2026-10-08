@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/db/vision_db.dart';
 import '../core/exercises/exercise_painter.dart';
 import '../core/gabor/gabor_patch.dart';
+import '../core/reminder/reminder_service.dart';
 import '../core/theme/visor_theme.dart';
 import '../core/training/template_repo.dart';
 import '../core/training/training_step.dart';
@@ -118,8 +119,19 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen> {
       builtin: existing?.builtin ?? false,
       steps: _steps,
     ));
+    // Renaming a routine or changing its length must update the notification
+    // text too, so republish the labels with the just-saved state.
+    await _publishLabels(repo);
     if (!mounted) return;
     Navigator.pop(context);
+  }
+
+  /// Publishes the plan to the notification labels. Best effort: a failed
+  /// channel call (no plugin in widget tests) must not break the UI.
+  Future<void> _publishLabels(TemplateRepo repo) async {
+    try {
+      await ReminderService.publishWeekLabels(await weekLabels(repo));
+    } catch (_) {}
   }
 
   String _mmss(int s) {

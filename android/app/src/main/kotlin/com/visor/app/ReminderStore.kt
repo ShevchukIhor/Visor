@@ -13,6 +13,7 @@ object ReminderStore {
 
   private const val PREFS = "visor_reminder"
   private const val KEY_LAST_TRAINED = "last_trained_ms"
+  private const val KEY_WEEK_LABELS = "week_labels"
 
   private fun prefs(context: Context): SharedPreferences =
     context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -20,6 +21,21 @@ object ReminderStore {
   /** Record that a session completed at [ts]. */
   fun markTrained(context: Context, ts: Long) {
     prefs(context).edit().putLong(KEY_LAST_TRAINED, ts).apply()
+  }
+
+  /** Seven labels, Monday first, joined by \n. Empty entry = no routine. */
+  fun setWeekLabels(context: Context, labels: List<String>) {
+    prefs(context).edit()
+      .putString(KEY_WEEK_LABELS, labels.joinToString("\n"))
+      .apply()
+  }
+
+  /** Label for [isoWeekday] (1 = Monday), or null when none is set. */
+  fun labelFor(context: Context, isoWeekday: Int): String? {
+    val raw = prefs(context).getString(KEY_WEEK_LABELS, null) ?: return null
+    val parts = raw.split("\n")
+    if (parts.size != 7) return null
+    return parts[isoWeekday - 1].ifBlank { null }
   }
 
   /** True if a session completed at any point today (local calendar day). */

@@ -194,3 +194,17 @@ class TemplateRepo {
     }
   }
 }
+
+/// One label per ISO weekday, index 0 = Monday, null where the day has no
+/// routine. Always seven entries: the native side indexes into it directly.
+Future<List<String?>> weekLabels(TemplateRepo repo) async {
+  final plan = await repo.weekPlan();
+  final byId = {for (final t in await repo.all()) t.id: t};
+  return [
+    for (var d = 1; d <= 7; d++)
+      switch (byId[plan[d]]) {
+        null => null,
+        final t => '${t.name}, ${(t.totalSeconds / 60).round()} min',
+      },
+  ];
+}

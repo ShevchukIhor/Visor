@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/db/vision_db.dart';
+import '../core/reminder/reminder_service.dart';
 import '../core/theme/visor_theme.dart';
 import '../core/training/template_repo.dart';
 import '../core/training/training_step.dart';
@@ -44,9 +45,13 @@ class _WeekPlanScreenState extends State<WeekPlanScreen> {
     });
   }
 
-  /// Publishes the plan to the notification labels. Filled in by Task 8;
-  /// the call site is wired now so Task 8 does not touch this file twice.
-  Future<void> _publishLabels() async {}
+  /// Publishes the plan to the notification labels. Best effort: a failed
+  /// channel call (no plugin in widget tests) must not break the UI.
+  Future<void> _publishLabels() async {
+    try {
+      await ReminderService.publishWeekLabels(await weekLabels(_repo));
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
