@@ -82,4 +82,65 @@ void main() {
     expect(find.textContaining('Could not save 1 step'), findsOneWidget);
     expect(find.text('Retry save'), findsOneWidget);
   });
+
+  testWidgets('skip advances to the next step without recording the '
+      'skipped one', (tester) async {
+    final t = routine([
+      ExerciseStep(type: ExerciseType.pursuit, seconds: 3),
+      ExerciseStep(type: ExerciseType.saccadic, seconds: 3),
+    ]);
+    await tester.pumpWidget(MaterialApp(home: SessionRunner(template: t)));
+    await tester.pump(); // autoStart postFrameCallback
+    expect(find.textContaining('1/2 · ${ExerciseType.pursuit.title}'),
+        findsOneWidget);
+
+    // Skip the first step mid-run: it must advance immediately.
+    await tester.tap(find.byTooltip('Skip step'));
+    await tester.pump();
+    await tester.pump();
+    expect(find.textContaining('2/2 · ${ExerciseType.saccadic.title}'),
+        findsOneWidget);
+
+    // Let the second step finish naturally. Its write fails (no database
+    // factory in a bare widget test), so the finish card must name exactly
+    // one failed step — the one that ran, not the one that was skipped.
+    // A skip is abandoning, not completing: no drill row, not a failed step.
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Could not save 1 step'), findsOneWidget);
+  });
+
+  testWidgets('the session remaining time counts down and recomputes on '
+      'step change', (tester) async {
+    final t = routine([
+      ExerciseStep(type: ExerciseType.pursuit, seconds: 3),
+      ExerciseStep(type: ExerciseType.saccadic, seconds: 4),
+      ExerciseStep(type: ExerciseType.figure8, seconds: 5),
+    ]);
+    await tester.pumpWidget(MaterialApp(home: SessionRunner(template: t)));
+    await tester.pump(); // autoStart: step 1 reports its full duration
+
+    // At the start the session owes every step in full: 3 + 4 + 5 = 12 s.
+    expect(find.text('0:12'), findsOneWidget);
+
+    // One second in: 2 left on the step, 4 + 5 on the rest — 11 s.
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump();
+    expect(find.text('0:11'), findsOneWidget);
+
+    // Step 1 finishes: the session now owes only steps 2 and 3 — 9 s.
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump();
+    await tester.pump();
+    expect(find.textContaining('2/3 · ${ExerciseType.saccadic.title}'),
+        findsOneWidget);
+    expect(find.text('0:09'), findsOneWidget);
+
+    // Drain the remaining steps so their tickers don't outlive the test.
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+  });
 }

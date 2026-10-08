@@ -35,6 +35,10 @@ class _WeekPlanScreenState extends State<WeekPlanScreen> {
   }
 
   Future<void> _load() async {
+    // A first-launch user may open the plan before the templates screen,
+    // which is the only other place that seeds; `seedPresets` is idempotent
+    // (see templates_screen.dart), so seeding here is cheap.
+    await _repo.seedPresets();
     final templates = await _repo.all();
     final plan = await _repo.weekPlan();
     if (!mounted) return;

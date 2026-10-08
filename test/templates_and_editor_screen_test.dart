@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -11,6 +12,7 @@ import 'package:visor/core/training/template_repo.dart';
 import 'package:visor/core/training/training_step.dart';
 import 'package:visor/screens/template_editor_screen.dart';
 import 'package:visor/screens/templates_screen.dart';
+import 'package:visor/screens/week_plan_screen.dart';
 
 /// Widget-level coverage for the routine list and editor.
 ///
@@ -170,5 +172,108 @@ void main() {
         tester.widget<TextButton>(find.widgetWithText(TextButton, 'Save'));
     expect(saveButton.onPressed, isNotNull,
         reason: 'warnings are advisory and must never disable Save');
+  });
+
+  testWidgets('the week screen seeds the presets on a first run',
+      (tester) async {
+    // `setUp` wiped the templates, so this is a first run: the plan screen
+    // must offer the seeded presets, not just 'Rest day'.
+    await tester.runAsync(() async {
+      await tester.pumpWidget(const MaterialApp(home: WeekPlanScreen()));
+      for (var i = 0;
+          i < 40 &&
+          find.byType(CircularProgressIndicator).evaluate().isNotEmpty;
+          i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await tester.pump();
+      }
+    });
+    expect(find.text('Monday'), findsOneWidget);
+
+    await tester.tap(find.byType(DropdownButton<int?>).first);
+    await tester.pumpAndSettle();
+    // Seven closed dropdowns each render 'Rest day' (every day is unplanned)
+    // plus the one open menu item — the point is that the presets are
+    // offered at all.
+    expect(find.text('Rest day'), findsWidgets);
+    expect(find.text('Screen break'), findsOneWidget);
+    expect(find.text('Morning'), findsOneWidget);
+    expect(find.text('Wind down'), findsOneWidget);
+    expect(find.text('Sharpen'), findsOneWidget);
+  });
+
+  testWidgets('deleting a routine republishes the week labels',
+      (tester) async {
+    // Capture what the delete flow pushes to the native side.
+    List<String?>? published;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(const MethodChannel('visor/reminder'),
+            (call) async {
+      if (call.method == 'setWeekLabels') {
+        published = (call.arguments['labels'] as List)
+            .map((e) => e as String?)
+            .toList();
+      }
+      return null;
+    });
+
+    // A routine planned for Monday, so the labels carry its name before the
+    // delete and must not carry it after.
+    final id = await tester.runAsync(() async {
+      final repo = TemplateRepo(await VisionDb.instance.db);
+      return repo.save(Template(
+        id: 0,
+        name: 'Doomed',
+        builtin: false,
+        steps: [ExerciseStep(type: ExerciseType.pursuit, seconds: 60)],
+      ));
+    });
+    await tester.runAsync(() async {
+      await (await VisionDb.instance.db).insert(
+          'week_plan', {'weekday': 1, 'template_id': id});
+    });
+
+    await tester.runAsync(() async {
+      await tester.pumpWidget(const MaterialApp(home: TemplatesScreen()));
+      for (var i = 0;
+          i < 40 &&
+          find.byType(CircularProgressIndicator).evaluate().isNotEmpty;
+          i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await tester.pump();
+      }
+    });
+    expect(find.text('Doomed'), findsOneWidget);
+
+    // Long press → action sheet. A long press inside `runAsync` never
+    // reaches the recognizer, so it runs in the plain fake zone.
+    await tester.longPress(find.text('Doomed'));
+    await tester.pumpAndSettle();
+
+    // The sheet's Delete tap starts the delete flow, and the confirm tap
+    // triggers the delete and its label republish — both wait on real disk
+    // I/O, so the flow must start in an async zone (a continuation that
+    // begins in the fake zone never resolves its I/O), like the Save
+    // interaction in the reorder test above.
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+      // pumpAndSettle only waits for animations, not for the delete and
+      // label I/O — poll, bounded, until the channel call arrives.
+      for (var i = 0; i < 40 && published == null; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await tester.pump();
+      }
+    });
+
+    // Monday's plan row is null now (the FK set it), so the republished
+    // labels must name no routine at all. `publishWeekLabels` maps null to
+    // the empty string before the channel call, so all seven are ''.
+    expect(published, isNotNull,
+        reason: 'a delete must republish the week labels');
+    expect(published, hasLength(7));
+    expect(published, everyElement(isEmpty));
   });
 }

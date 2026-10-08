@@ -99,6 +99,18 @@ class _SessionRunnerState extends State<SessionRunner> {
     setState(() => _stepSecondsLeft = secondsLeft);
   }
 
+  /// The session's remaining time: this step's seconds left (its full
+  /// duration until the first tick reports) plus every later step's full
+  /// duration. Computed from live state, so a tick, a step change or a skip
+  /// updates it automatically.
+  int _sessionSecondsLeft() {
+    var left = _stepSecondsLeft ?? _steps[_index].seconds;
+    for (var i = _index + 1; i < _steps.length; i++) {
+      left += _steps[i].seconds;
+    }
+    return left;
+  }
+
   void _onGameProgress(int secondsLeft, int correct, int total) {
     if (!mounted) return;
     setState(() {
@@ -173,6 +185,9 @@ class _SessionRunnerState extends State<SessionRunner> {
           step: rest,
           next: index + 1 < _steps.length ? _steps[index + 1].title : null,
           onDone: _next,
+          // Feed the session's bar like the other steps, so its remaining
+          // time counts down through the rest instead of freezing.
+          onTick: _onExerciseTick,
         ),
       // Reserved for the psychophysical engine, not rendered until that
       // lands — advance past it immediately rather than making the user
@@ -231,6 +246,15 @@ class _SessionRunnerState extends State<SessionRunner> {
           // two apart (and knows whether to refresh, e.g., the dashboard).
           onPressed: () => Navigator.pop(context, false),
         ),
+        IconButton(
+          icon: const Icon(Icons.skip_next, color: VisorTheme.text, size: 20),
+          tooltip: 'Skip step',
+          // A skip is abandoning, not completing: it advances without
+          // recording the current step — no drill row, not a failed step.
+          // The children only write on natural completion, so disposing the
+          // current one via `_next` records nothing.
+          onPressed: _next,
+        ),
         const SizedBox(width: 6),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -251,6 +275,14 @@ class _SessionRunnerState extends State<SessionRunner> {
                         fontSize: 14,
                         fontWeight: FontWeight.bold)),
               ],
+              // The session's remaining time, dim so the step's own
+              // countdown stays the focal number.
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Text(_mmss(_sessionSecondsLeft()),
+                    style: const TextStyle(
+                        color: VisorTheme.textDim, fontSize: 12)),
+              ),
               if (_stepTotal > 0) ...[
                 const SizedBox(width: 10),
                 Text('✓ $_stepCorrect ✗ ${_stepTotal - _stepCorrect}',
@@ -396,11 +428,13 @@ class _RestCard extends StatefulWidget {
     required this.step,
     required this.next,
     required this.onDone,
+    this.onTick,
   });
 
   final RestStep step;
   final String? next;
   final VoidCallback onDone;
+  final ValueChanged<int>? onTick;
 
   @override
   State<_RestCard> createState() => _RestCardState();
@@ -420,6 +454,7 @@ class _RestCardState extends State<_RestCard> {
         widget.onDone();
       } else {
         setState(() => _left--);
+        widget.onTick?.call(_left);
       }
     });
   }

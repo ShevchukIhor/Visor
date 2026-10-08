@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/db/vision_db.dart';
+import '../core/reminder/reminder_service.dart';
 import '../core/theme/visor_theme.dart';
 import '../core/training/template_repo.dart';
 import '../core/training/training_step.dart';
@@ -89,6 +90,13 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
     final repo = _repo;
     if (repo == null) return;
     await repo.delete(t.id);
+    // The native week labels still carry the deleted routine's name, so the
+    // next reminder would name a routine that no longer exists. Republish
+    // with the post-delete state. Best effort: a failed channel call must
+    // not break the delete.
+    try {
+      await ReminderService.publishWeekLabels(await weekLabels(repo));
+    } catch (_) {}
     await _load();
   }
 

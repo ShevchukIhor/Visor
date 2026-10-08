@@ -28,6 +28,11 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen> {
   late List<TrainingStep> _steps;
   bool _saving = false;
 
+  /// Set when the database write failed; drives the error line and the
+  /// Retry save button. A failed save must re-enable Save instead of
+  /// leaving it disabled forever with the edits silently lost.
+  bool _saveError = false;
+
   @override
   void initState() {
     super.initState();
@@ -109,21 +114,35 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen> {
   Future<void> _save() async {
     if (_saving) return;
     setState(() => _saving = true);
-    final db = await VisionDb.instance.db;
-    final repo = TemplateRepo(db);
-    final existing = widget.template;
-    final name = _name.text.trim();
-    await repo.save(Template(
-      id: existing?.id ?? 0,
-      name: name.isEmpty ? 'Untitled routine' : name,
-      builtin: existing?.builtin ?? false,
-      steps: _steps,
-    ));
-    // Renaming a routine or changing its length must update the notification
-    // text too, so republish the labels with the just-saved state.
-    await _publishLabels(repo);
-    if (!mounted) return;
-    Navigator.pop(context);
+    try {
+      final db = await VisionDb.instance.db;
+      final repo = TemplateRepo(db);
+      final existing = widget.template;
+      final name = _name.text.trim();
+      await repo.save(Template(
+        id: existing?.id ?? 0,
+        name: name.isEmpty ? 'Untitled routine' : name,
+        builtin: existing?.builtin ?? false,
+        steps: _steps,
+      ));
+      // Renaming a routine or changing its length must update the
+      // notification text too, so republish the labels with the just-saved
+      // state.
+      await _publishLabels(repo);
+      if (!mounted) return;
+      Navigator.pop(context);
+    } catch (e) {
+      // Losing edits silently while the screen looks saved is worse than an
+      // ugly message: the user would keep editing a routine that was never
+      // written, and lose the work again.
+      debugPrint('Failed to save routine: $e');
+      if (!mounted) return;
+      setState(() => _saveError = true);
+    } finally {
+      // A failed save must re-enable the Save button; a successful one has
+      // already popped the screen (and unmounts it, so the guard is a no-op).
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   /// Publishes the plan to the notification labels. Best effort: a failed
@@ -188,6 +207,30 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen> {
                   ),
                 ),
         ),
+        if (_saveError) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+            child: Row(children: [
+              const Icon(Icons.error_outline,
+                  color: VisorTheme.danger, size: 14),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                    'Could not save this routine — your changes are not '
+                    'stored.',
+                    style: const TextStyle(
+                        color: VisorTheme.danger, fontSize: 11, height: 1.3)),
+              ),
+            ]),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: TextButton(
+              onPressed: _save,
+              child: const Text('Retry save'),
+            ),
+          ),
+        ],
         for (final w in warnings)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
