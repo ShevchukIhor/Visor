@@ -57,6 +57,11 @@ class MainActivity : FlutterFragmentActivity() {
             ReminderStore.markTrained(this, ts)
             result.success(null)
           }
+          "setWeekLabels" -> {
+            val labels = call.argument<List<String>>("labels") ?: emptyList()
+            ReminderStore.setWeekLabels(this, labels)
+            result.success(null)
+          }
           else -> result.notImplemented()
         }
       }

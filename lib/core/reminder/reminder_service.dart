@@ -89,6 +89,18 @@ class ReminderService {
     } catch (_) {}
   }
 
+  /// Push one label per ISO weekday (index 0 = Monday) to the native side.
+  ///
+  /// Seven labels, not one: the alarm can fire days after the app last ran, so
+  /// a single stored "today" string would name the wrong routine. The receiver
+  /// picks by the weekday at fire time.
+  static Future<void> publishWeekLabels(List<String?> labels) async {
+    assert(labels.length == 7);
+    await _channel.invokeMethod<void>('setWeekLabels', {
+      'labels': labels.map((l) => l ?? '').toList(),
+    });
+  }
+
   /// Record that the user trained today (so the reminder won't nag).
   static Future<void> markTrainedToday() async {
     try {

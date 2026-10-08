@@ -2,60 +2,13 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
 import '../gabor/gabor_patch.dart';
-
-/// One completed training session.
-class VisionSession {
-  final int id;
-  final DateTime startedAt;
-  final int durationS;
-  final String difficulty;
-  final int grid;
-  final String pattern; // 'straight' | 'curved'
-  final int correct;
-  final int total;
-  final double score;
-
-  const VisionSession({
-    required this.id,
-    required this.startedAt,
-    required this.durationS,
-    required this.difficulty,
-    required this.grid,
-    required this.pattern,
-    required this.correct,
-    required this.total,
-    required this.score,
-  });
-
-  Map<String, Object?> toMap() => {
-        'started_at': startedAt.millisecondsSinceEpoch,
-        'duration_s': durationS,
-        'difficulty': difficulty,
-        'grid': grid,
-        'pattern': pattern,
-        'correct': correct,
-        'total': total,
-        'score': score,
-      };
-
-  factory VisionSession.fromMap(Map<String, Object?> m) => VisionSession(
-        id: m['id'] as int,
-        startedAt:
-            DateTime.fromMillisecondsSinceEpoch(m['started_at'] as int),
-        durationS: m['duration_s'] as int,
-        difficulty: m['difficulty'] as String,
-        grid: m['grid'] as int,
-        pattern: m['pattern'] as String,
-        correct: m['correct'] as int,
-        total: m['total'] as int,
-        score: (m['score'] as num).toDouble(),
-      );
-}
+import 'drill.dart';
 
 /// Local-date key (`YYYY-MM-DD`), matching SQLite's
 /// `date(started_at/1000, 'unixepoch', 'localtime')`.
@@ -88,7 +41,7 @@ int computeStreak(Set<String> days, DateTime now) {
   return streak;
 }
 
-/// Database access for vision sessions and the reminder settings row.
+/// Database access for drills and the reminder settings row.
 class VisionDb {
   VisionDb._();
   static final VisionDb instance = VisionDb._();
@@ -98,30 +51,27 @@ class VisionDb {
   /// open the database twice.
   Future<Database>? _dbFuture;
 
-  Future<Database> get db => _dbFuture ??= _open();
+  Future<Database> get db => _dbFuture ??= _open().onError<Object>((e, _) {
+        // Drop the memo so the next caller retries. Caching the future keeps
+        // two racing first-callers from opening the database twice, but
+        // caching a *rejected* future would poison every later access for
+        // the life of the process — including every Retry affordance in
+        // exercises_screen.dart and session_runner.dart, which exist
+        // specifically to try the write again.
+        _dbFuture = null;
+        throw e;
+      });
 
   Future<Database> _open() async {
     final path = p.join(await getDatabasesPath(), 'visor.db');
     return openDatabase(
       path,
-      version: 3,
+      version: 4,
+      onConfigure: (d) async {
+        await d.execute('PRAGMA foreign_keys = ON');
+      },
       onCreate: (d, v) async {
-        await d.execute('''
-          CREATE TABLE vision_sessions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            started_at INTEGER NOT NULL,
-            duration_s INTEGER NOT NULL,
-            difficulty TEXT NOT NULL,
-            grid INTEGER NOT NULL,
-            pattern TEXT NOT NULL,
-            correct INTEGER NOT NULL,
-            total INTEGER NOT NULL,
-            score REAL NOT NULL
-          )
-        ''');
-        await d.execute(
-          'CREATE INDEX idx_sessions_started ON vision_sessions(started_at)',
-        );
+        await _createV4(d);
         await d.execute('''
           CREATE TABLE reminder (
             id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -133,37 +83,130 @@ class VisionDb {
         await d.insert('reminder',
             {'id': 1, 'enabled': 0, 'hour': 21, 'minute': 0});
       },
-      onUpgrade: (d, oldV, newV) async {
-        // v2 added an `account` table for a Seed Vault wallet card that was
-        // removed from the UI; v3 drops it so no wallet address lingers on
-        // disk. Tipping needs no stored account.
-        if (oldV < 3) {
-          await d.execute('DROP TABLE IF EXISTS account');
-        }
-      },
+      onUpgrade: migrate,
     );
   }
 
-  Future<int> insertSession(VisionSession s) async {
-    final d = await db;
-    final id = await d.insert('vision_sessions', s.toMap());
-    return id;
+  /// Schema steps, extracted from [_open] so a test can drive them against an
+  /// in-memory database.
+  static Future<void> migrate(Database d, int oldV, int newV) async {
+    if (oldV < 3) {
+      await d.execute('DROP TABLE IF EXISTS account');
+    }
+    if (oldV < 4) {
+      await _createV4(d);
+      await _backfillSessionsIntoDrills(d);
+      await d.execute('DROP TABLE IF EXISTS vision_sessions');
+    }
   }
 
-  Future<List<VisionSession>> allSessions() async {
-    final d = await db;
-    final rows = await d.query('vision_sessions',
-        orderBy: 'started_at DESC');
-    return rows.map(VisionSession.fromMap).toList();
+  /// The v4 DDL, for tests that need the schema without the app's database
+  /// file. Production goes through [_open].
+  static Future<void> createV4ForTest(Database d) => _createV4(d);
+
+  static Future<void> _createV4(Database d) async {
+    await d.execute('''
+      CREATE TABLE viewing_geometry (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_at INTEGER NOT NULL,
+        px_per_mm REAL NOT NULL,
+        distance_mm REAL NOT NULL
+      )
+    ''');
+    await d.execute('''
+      CREATE TABLE drills (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        started_at INTEGER NOT NULL,
+        task TEXT NOT NULL,
+        duration_s INTEGER NOT NULL,
+        completed INTEGER NOT NULL,
+        trials INTEGER NOT NULL,
+        correct INTEGER NOT NULL,
+        threshold REAL,
+        threshold_unit TEXT,
+        reversals TEXT,
+        geometry_id INTEGER REFERENCES viewing_geometry(id),
+        score REAL,
+        template_id INTEGER,
+        params TEXT
+      )
+    ''');
+    await d.execute(
+        'CREATE INDEX idx_drills_started ON drills(started_at)');
+    await d.execute('''
+      CREATE TABLE templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        builtin INTEGER NOT NULL,
+        position INTEGER NOT NULL,
+        created_at INTEGER NOT NULL
+      )
+    ''');
+    await d.execute('''
+      CREATE TABLE template_steps (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        template_id INTEGER NOT NULL
+            REFERENCES templates(id) ON DELETE CASCADE,
+        position INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        seconds INTEGER NOT NULL,
+        params TEXT
+      )
+    ''');
+    await d.execute(
+        'CREATE INDEX idx_steps_template ON template_steps(template_id, position)');
+    await d.execute('''
+      CREATE TABLE week_plan (
+        weekday INTEGER PRIMARY KEY CHECK (weekday BETWEEN 1 AND 7),
+        template_id INTEGER REFERENCES templates(id) ON DELETE SET NULL
+      )
+    ''');
   }
 
-  Future<int> sessionsOnDay(DateTime day) async {
+  /// Copy v3 sessions across. The difficulty string is carried verbatim into
+  /// `params` rather than parsed: a row written by a build we do not know about
+  /// is still the user's training history and must survive the upgrade.
+  static Future<void> _backfillSessionsIntoDrills(Database d) async {
+    final rows = await d.query('vision_sessions');
+    final batch = d.batch();
+    for (final r in rows) {
+      final params = jsonEncode({
+        'difficulty': r['difficulty'],
+        'grid': r['grid'],
+        'pattern': r['pattern'],
+      });
+      batch.insert('drills', {
+        'started_at': r['started_at'],
+        'task': taskGaborGrid,
+        'duration_s': r['duration_s'],
+        'completed': 1,
+        'trials': r['total'],
+        'correct': r['correct'],
+        'score': r['score'],
+        'params': params,
+      });
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<int> insertDrill(Drill drill) async {
+    final d = await db;
+    return d.insert('drills', drill.toMap());
+  }
+
+  Future<List<Drill>> allDrills() async {
+    final d = await db;
+    final rows = await d.query('drills', orderBy: 'started_at DESC');
+    return rows.map(Drill.fromMap).toList();
+  }
+
+  Future<int> drillsOnDay(DateTime day) async {
     final d = await db;
     final start =
         DateTime(day.year, day.month, day.day).millisecondsSinceEpoch;
     final end = start + 24 * 60 * 60 * 1000;
     final rows = await d.rawQuery(
-      'SELECT COUNT(*) AS c FROM vision_sessions WHERE started_at >= ? AND started_at < ?',
+      'SELECT COUNT(*) AS c FROM drills WHERE started_at >= ? AND started_at < ?',
       [start, end],
     );
     return (rows.first['c'] as int?) ?? 0;
@@ -187,25 +230,31 @@ class VisionDb {
     );
   }
 
-  /// Best score across all sessions, weighted by difficulty (already baked
-  /// into the stored `score`).
+  /// Best weighted score, still a Gabor-game notion: an exercise has no score.
   Future<double> bestScore() async {
     final d = await db;
     final rows = await d.rawQuery(
-        'SELECT MAX(score) AS m FROM vision_sessions');
+        'SELECT MAX(score) AS m FROM drills WHERE task = ?', [taskGaborGrid]);
     return ((rows.first['m'] as num?) ?? 0).toDouble();
   }
 
-  /// Current streak = consecutive days ending at today (or yesterday, if
-  /// today is not yet closed) that have at least one session.
+  /// Days closed by training. A drill counts only if it ran to the end and
+  /// lasted at least 30 s, otherwise opening and closing a screen would farm
+  /// the streak.
   Future<int> streak() async {
     final d = await db;
+    return streakFrom(d, DateTime.now());
+  }
+
+  /// Extracted from [streak] so a test can drive the closing-day SQL against
+  /// an in-memory database, the same way [migrate] is tested.
+  static Future<int> streakFrom(Database d, DateTime now) async {
     final rows = await d.rawQuery(
-      'SELECT DISTINCT date(started_at/1000, \'unixepoch\', \'localtime\') AS day '
-      'FROM vision_sessions',
+      "SELECT DISTINCT date(started_at/1000, 'unixepoch', 'localtime') AS day "
+      'FROM drills WHERE completed = 1 AND duration_s >= 30',
     );
     final days = rows.map((r) => r['day'] as String).toSet();
-    return computeStreak(days, DateTime.now());
+    return computeStreak(days, now);
   }
 
   /// Composite score for a finished session.

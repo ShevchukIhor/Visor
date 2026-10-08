@@ -1,13 +1,14 @@
-import 'dart:math' as math;
+import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../core/analytics/chart_math.dart';
+import '../core/db/drill.dart';
 import '../core/db/vision_db.dart';
 import '../core/theme/visor_theme.dart';
+import '../widgets/accuracy_chart.dart';
 
-/// Analytics: score trend chart + session history list.
+/// Analytics: daily accuracy chart + drill history list.
 class AnalyticsScreen extends StatefulWidget {
   const AnalyticsScreen({super.key});
 
@@ -16,7 +17,7 @@ class AnalyticsScreen extends StatefulWidget {
 }
 
 class _AnalyticsScreenState extends State<AnalyticsScreen> {
-  List<VisionSession> _sessions = [];
+  List<Drill> _drills = [];
   bool _loading = true;
 
   @override
@@ -26,16 +27,17 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   }
 
   Future<void> _load() async {
-    final s = await VisionDb.instance.allSessions();
+    final d = await VisionDb.instance.allDrills();
     if (!mounted) return;
     setState(() {
-      _sessions = s;
+      _drills = d;
       _loading = false;
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    final legend = legendOf(aggregateByDay(gaborSamples(_drills).toList()));
     return Scaffold(
       backgroundColor: VisorTheme.bg,
       appBar: AppBar(
@@ -45,16 +47,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _sessions.isEmpty
+          : _drills.isEmpty
               ? const Center(
-                  child: Text('No sessions yet',
+                  child: Text('No drills yet',
                       style: TextStyle(color: VisorTheme.textDim)))
               : Column(
                   children: [
                     const Padding(
                       padding: EdgeInsets.all(12),
                       child: Text(
-                          'Score trend',
+                          'Daily accuracy',
                           style: TextStyle(
                               color: VisorTheme.textDim, fontSize: 13)),
                     ),
@@ -63,9 +65,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       child: Padding(
                         padding:
                             const EdgeInsets.symmetric(horizontal: 16),
-                        child: _ScoreChart(sessions: _sessions),
+                        child: AccuracyChart(drills: _drills),
                       ),
                     ),
+                    const SizedBox(height: 6),
+                    AccuracyChartLegend(difficulties: legend),
                     const SizedBox(height: 8),
                     const Text(
                         'History',
@@ -77,17 +81,32 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
+  /// Grid size and stripe pattern, stored in `params` for the Gabor game.
+  /// Other tasks (an exercise, later a measured drill) have no such shape.
+  (int, String)? _gaborParams(Drill d) {
+    if (d.task != taskGaborGrid || d.params == null) return null;
+    final m = jsonDecode(d.params!) as Map<String, Object?>;
+    final grid = m['grid'] as int?;
+    final pattern = m['pattern'] as String?;
+    if (grid == null || pattern == null) return null;
+    return (grid, pattern);
+  }
+
   Widget _historyList() {
     return ListView.separated(
       padding: const EdgeInsets.all(16),
-      itemCount: _sessions.length,
+      itemCount: _drills.length,
       separatorBuilder: (_, _) => const SizedBox(height: 6),
       itemBuilder: (ctx, i) {
-        final s = _sessions[i];
-        final dt = s.startedAt;
+        final d = _drills[i];
+        final dt = d.startedAt;
         final date =
             '${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')} '
             '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+        final gabor = _gaborParams(d);
+        final label = gabor != null
+            ? '${gabor.$1}\u00D7${gabor.$1} \u00B7 ${gabor.$2} \u00B7 ${d.durationS ~/ 60} min'
+            : '${d.task} \u00B7 ${d.durationS ~/ 60} min';
         return Container(
           padding:
               const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -101,8 +120,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                        '${s.grid}\u00D7${s.grid} \u00B7 ${s.pattern} \u00B7 ${s.durationS ~/ 60} min',
+                    Text(label,
                         style: const TextStyle(
                             color: VisorTheme.text, fontSize: 14)),
                     Text(date,
@@ -111,12 +129,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   ],
                 ),
               ),
-              Text('${s.correct}/${s.total}',
-                  style: const TextStyle(
-                      color: VisorTheme.text, fontSize: 14)),
-              const SizedBox(width: 12),
+              if (d.trials > 0) ...[
+                Text('${d.correct}/${d.trials}',
+                    style: const TextStyle(
+                        color: VisorTheme.text, fontSize: 14)),
+                const SizedBox(width: 12),
+              ],
               Text(
-                s.score.toStringAsFixed(0),
+                d.score?.toStringAsFixed(0) ?? '\u2014',
                 style: const TextStyle(
                     color: VisorTheme.primary,
                     fontSize: 16,
@@ -128,167 +148,4 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       },
     );
   }
-}
-
-class _ScoreChart extends StatelessWidget {
-  final List<VisionSession> sessions;
-  const _ScoreChart({required this.sessions});
-
-  @override
-  Widget build(BuildContext context) {
-    final pts = sessions
-        .map((s) => _ChartPoint(s.score, s.startedAt, s.id))
-        .toList()
-      // Deterministic order: time, then id. A plain time sort is unstable,
-      // so two sessions recorded in the same millisecond could swap and
-      // reshape the line (the 100-peak would jump off the middle).
-      ..sort((a, b) {
-        final c = a.time.compareTo(b.time);
-        return c != 0 ? c : a.id.compareTo(b.id);
-      });
-    return CustomPaint(painter: _ChartPainter(points: pts));
-  }
-}
-
-class _ChartPoint {
-  final double score;
-  final DateTime time;
-  final int id;
-  const _ChartPoint(this.score, this.time, this.id);
-
-  @override
-  bool operator ==(Object other) =>
-      other is _ChartPoint &&
-      other.score == score &&
-      other.time == time &&
-      other.id == id;
-
-  @override
-  int get hashCode => Object.hash(score, time, id);
-}
-
-class _ChartPainter extends CustomPainter {
-  final List<_ChartPoint> points;
-  _ChartPainter({required this.points});
-
-  static const double padL = 34;
-  static const double padR = 14;
-  static const double padT = 22;
-  static const double padB = 20;
-
-  static String _date(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}';
-
-  void _label(
-      Canvas canvas,
-      TextPainter tp,
-      String text,
-      TextStyle style,
-      Offset pos) {
-    tp.text = TextSpan(text: text, style: style);
-    tp.layout(maxWidth: double.infinity);
-    tp.paint(canvas, pos);
-  }
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (points.isEmpty) return;
-    final w = size.width;
-    final h = size.height;
-    final plotW = math.max(w - padL - padR, 1);
-    final plotH = math.max(h - padT - padB, 1);
-    final baseY = padT + plotH;
-
-    final maxScore = points.reduce((a, b) => a.score > b.score ? a : b).score;
-    final yMax = niceCeil(maxScore);
-
-    final tp = TextPainter(textDirection: TextDirection.ltr);
-    final dimStyle = TextStyle(color: VisorTheme.textDim, fontSize: 10);
-
-    // grid: 0 / 50% / 100% with numeric Y labels.
-    final grid = Paint()
-      ..color = VisorTheme.textDim.withValues(alpha: 0.25)
-      ..strokeWidth = 1;
-    for (final f in [0.0, 0.5, 1.0]) {
-      final y = padT + plotH * (1 - f);
-      canvas.drawLine(Offset(padL, y), Offset(padL + plotW, y), grid);
-      // yMax comes from niceCeil, so 0 / 0.5 / 1 of it are already round.
-      _label(
-          canvas,
-          tp,
-          (f * yMax).toStringAsFixed(0),
-          dimStyle,
-          Offset(padL - 28, y - 7));
-    }
-
-    final n = points.length;
-    Offset xy(int i) {
-      final x = padL + (n <= 1 ? plotW / 2 : plotW * (i / (n - 1)));
-      final y = baseY - (points[i].score / yMax) * plotH;
-      return Offset(x, y);
-    }
-
-    // x-axis date labels (first / last).
-    if (n >= 2) {
-      _label(canvas, tp, _date(points.first.time), dimStyle,
-          Offset(padL, baseY + 6));
-      _label(canvas, tp, _date(points.last.time), dimStyle,
-          Offset(padL + plotW - 28, baseY + 6));
-    }
-
-    if (n == 1) {
-      final p = xy(0);
-      canvas.drawCircle(p, 4, Paint()..color = VisorTheme.primary);
-      _label(
-          canvas,
-          tp,
-          points.first.score.toStringAsFixed(0),
-          TextStyle(
-              color: VisorTheme.text,
-              fontSize: 12,
-              fontWeight: FontWeight.bold),
-          Offset(p.dx - 12, p.dy - 22));
-      return;
-    }
-
-    final pts = [for (var i = 0; i < n; i++) xy(i)];
-
-    final line = Paint()
-      ..color = VisorTheme.primary
-      ..strokeWidth = 2.5
-      ..style = PaintingStyle.stroke;
-    final fill = Paint()
-      ..color = VisorTheme.primary.withValues(alpha: 0.15)
-      ..style = PaintingStyle.fill;
-    final dot = Paint()..color = VisorTheme.primary;
-
-    final path = Path()..moveTo(pts.first.dx, pts.first.dy);
-    for (final p in pts.skip(1)) {
-      path.lineTo(p.dx, p.dy);
-    }
-    final fillPath = Path.from(path)
-      ..lineTo(pts.last.dx, baseY)
-      ..lineTo(pts.first.dx, baseY)
-      ..close();
-    canvas.drawPath(fillPath, fill);
-    canvas.drawPath(path, line);
-    for (final p in pts) {
-      canvas.drawCircle(p, 3, dot);
-    }
-
-    final lp = pts.last;
-    _label(
-        canvas,
-        tp,
-        points.last.score.toStringAsFixed(0),
-        TextStyle(
-            color: VisorTheme.text, fontSize: 12, fontWeight: FontWeight.bold),
-        Offset(lp.dx - 12, lp.dy - 20 < 4 ? 4 : lp.dy - 20));
-  }
-
-  @override
-  bool shouldRepaint(covariant _ChartPainter old) =>
-      // A fresh list is built on every rebuild, so identity would always
-      // differ; compare the points themselves.
-      !listEquals(old.points, points);
 }

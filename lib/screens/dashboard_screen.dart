@@ -7,7 +7,9 @@ import 'analytics_screen.dart';
 import 'exercises_screen.dart';
 import 'reminder_screen.dart';
 import 'setup_screen.dart';
+import 'templates_screen.dart';
 import 'about_screen.dart';
+import '../widgets/today_card.dart';
 
 /// Home dashboard: streak, today, best, and navigation to training modes.
 class DashboardScreen extends StatefulWidget {
@@ -31,7 +33,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _load() async {
     final streak = await VisionDb.instance.streak();
-    final today = await VisionDb.instance.sessionsOnDay(DateTime.now());
+    final today = await VisionDb.instance.drillsOnDay(DateTime.now());
     final best = await VisionDb.instance.bestScore();
     final version = await AppInfo.version();
     if (!mounted) return;
@@ -74,6 +76,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               const SizedBox(height: 16),
               _statsRow(),
+              TodayCard(onChanged: _load),
               const SizedBox(height: 24),
               _menuButton(
                 icon: Icons.play_arrow,
@@ -82,6 +85,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const SetupScreen()),
+                ).then((_) => _load()),
+              ),
+              _menuButton(
+                icon: Icons.checklist,
+                title: 'Routines',
+                subtitle: 'Run several exercises back to back',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const TemplatesScreen()),
                 ).then((_) => _load()),
               ),
               _menuButton(

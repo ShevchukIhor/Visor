@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../core/db/drill.dart';
 import '../core/db/vision_db.dart';
 import '../core/gabor/gabor_patch.dart';
 import '../core/models/session_setup.dart';
@@ -17,8 +19,32 @@ import '../widgets/gabor_view.dart';
 /// and shows the next trial until the timer runs out.
 class GameScreen extends StatefulWidget {
   final SessionSetup setup;
+  final int? templateId;
 
-  const GameScreen({super.key, required this.setup});
+  /// Called instead of showing the terminal card, so a routine can advance
+  /// to its next step. Also the signal that a routine — not this widget —
+  /// owns the screen's chrome: the top bar and the system-bar immersive mode.
+  final VoidCallback? onDone;
+
+  /// Called with the exact [Drill] whose write failed, in addition to
+  /// setting the retry flag. When [onDone] is set the result view that
+  /// would otherwise carry the retry affordance never renders, so a routine
+  /// needs this to learn a step's write failed and retry that same row.
+  final void Function(Drill failed)? onRecordFailed;
+
+  /// Reports the seconds remaining and the running score whenever either
+  /// changes, so a routine that owns the chrome (see [onDone]) can show
+  /// equivalent progress instead of this widget's hidden top bar.
+  final void Function(int secondsLeft, int correct, int total)? onProgress;
+
+  const GameScreen({
+    super.key,
+    required this.setup,
+    this.templateId,
+    this.onDone,
+    this.onRecordFailed,
+    this.onProgress,
+  });
 
   @override
   State<GameScreen> createState() => _GameScreenState();
@@ -44,22 +70,31 @@ class _GameScreenState extends State<GameScreen>
   @override
   void initState() {
     super.initState();
-    // Hide the system bars for the duration of the session only — a bright
-    // status bar next to a Gabor grid is exactly the distraction the drill
-    // is trying to remove.
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    if (widget.onDone == null) {
+      // Hide the system bars for the duration of the session only — a
+      // bright status bar next to a Gabor grid is exactly the distraction
+      // the drill is trying to remove. In routine mode `SessionRunner` owns
+      // this for the whole routine instead, so the bars don't flash back on
+      // between steps.
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    }
     _gen = TrialGenerator(curved: widget.setup.curved);
     _trial = _gen.generate(widget.setup.difficulty);
     _secondsLeft = widget.setup.durationS;
     _startedAt = DateTime.now();
+    _reportProgress();
     _startTimer();
   }
+
+  void _reportProgress() =>
+      widget.onProgress?.call(_secondsLeft, _correct, _total);
 
   void _startTimer() {
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) return;
       final done = _secondsLeft <= 1;
       setState(() => _secondsLeft = done ? 0 : _secondsLeft - 1);
+      _reportProgress();
       if (done) _finish();
     });
   }
@@ -68,6 +103,11 @@ class _GameScreenState extends State<GameScreen>
     _timer?.cancel();
     setState(() => _finished = true);
     _save();
+    final onDone = widget.onDone;
+    if (onDone != null) {
+      onDone();
+      return;
+    }
   }
 
   Future<void> _save() async {
@@ -78,18 +118,23 @@ class _GameScreenState extends State<GameScreen>
       total: _total,
       d: widget.setup.difficulty,
     );
+    final drill = Drill(
+      startedAt: _startedAt ?? DateTime.now(),
+      task: taskGaborGrid,
+      durationS: widget.setup.durationS,
+      completed: true,
+      trials: _total,
+      correct: _correct,
+      score: score,
+      templateId: widget.templateId,
+      params: jsonEncode({
+        'difficulty': widget.setup.difficulty.name,
+        'grid': _grid,
+        'pattern': widget.setup.curved ? 'curved' : 'straight',
+      }),
+    );
     try {
-      await VisionDb.instance.insertSession(VisionSession(
-        id: 0,
-        startedAt: _startedAt ?? DateTime.now(),
-        durationS: widget.setup.durationS,
-        difficulty: widget.setup.difficulty.name,
-        grid: _grid,
-        pattern: widget.setup.curved ? 'curved' : 'straight',
-        correct: _correct,
-        total: _total,
-        score: score,
-      ));
+      await VisionDb.instance.insertDrill(drill);
       // Tell the native reminder layer we trained today.
       await ReminderService.markTrainedToday();
     } catch (e) {
@@ -98,6 +143,12 @@ class _GameScreenState extends State<GameScreen>
       // what the user just did.
       debugPrint('Failed to save session: $e');
       _saved = false;
+      // Fires regardless of `mounted`: a routine step routes around this
+      // widget's own result view via `onDone`, so this may be the only place
+      // a routine ever learns the write failed. Carries the exact `Drill`
+      // that failed to insert, so a retry does not have to guess at trial
+      // stats it can no longer observe.
+      widget.onRecordFailed?.call(drill);
       if (!mounted) return;
       setState(() => _saveError = true);
     }
@@ -113,6 +164,7 @@ class _GameScreenState extends State<GameScreen>
         _correct++;
       }
     });
+    _reportProgress();
     // Show result briefly, then advance.
     Future.delayed(const Duration(milliseconds: 650), () {
       if (!mounted || _finished) return;
@@ -127,7 +179,9 @@ class _GameScreenState extends State<GameScreen>
   @override
   void dispose() {
     _timer?.cancel();
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    if (widget.onDone == null) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    }
     super.dispose();
   }
 
@@ -144,7 +198,16 @@ class _GameScreenState extends State<GameScreen>
   Widget _gameView() {
     return Column(
       children: [
-        _topBar(),
+        // Hidden (but space-preserving) in routine mode — SessionRunner
+        // owns all chrome then (see [onProgress]), so this doesn't paint a
+        // second close button, countdown and score over its own bar.
+        Visibility(
+          visible: widget.onDone == null,
+          maintainSize: true,
+          maintainAnimation: true,
+          maintainState: true,
+          child: _topBar(),
+        ),
         const SizedBox(height: 8),
         Expanded(child: _targetAndGrid()),
       ],
