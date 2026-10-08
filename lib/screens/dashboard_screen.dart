@@ -9,6 +9,7 @@ import 'reminder_screen.dart';
 import 'setup_screen.dart';
 import 'templates_screen.dart';
 import 'about_screen.dart';
+import '../widgets/today_card.dart';
 
 /// Home dashboard: streak, today, best, and navigation to training modes.
 class DashboardScreen extends StatefulWidget {
@@ -75,6 +76,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
               const SizedBox(height: 16),
               _statsRow(),
+              TodayCard(onChanged: _load),
               const SizedBox(height: 24),
               _menuButton(
                 icon: Icons.play_arrow,
