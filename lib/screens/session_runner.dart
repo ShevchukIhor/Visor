@@ -46,6 +46,10 @@ class _FailedStep {
 }
 
 class _SessionRunnerState extends State<SessionRunner> {
+  /// The quit/skip controls' touch-target side. Bigger than the 40 dp
+  /// default: a finger, not a stylus, taps these mid-drill.
+  static const double _controlSize = 56;
+
   int _index = 0;
   bool _done = false;
 
@@ -164,9 +168,60 @@ class _SessionRunnerState extends State<SessionRunner> {
     return Scaffold(
       backgroundColor: VisorTheme.bg,
       body: Stack(children: [
-        Positioned.fill(child: _stage(step)),
+        // The stage stops short of the bottom bar so a Gabor grid's last
+        // row is never hidden behind a button, and a tap on a cell can
+        // never land on the bar instead.
+        Positioned(
+          left: 0,
+          right: 0,
+          top: 0,
+          bottom: _controlSize + MediaQuery.of(context).padding.bottom,
+          child: _stage(step),
+        ),
         SafeArea(child: _progressBar(step)),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: _bottomBar(),
+        ),
       ]),
+    );
+  }
+
+  /// Quit and skip, in the bottom corners: the only part of a phone held in
+  /// one hand the thumb reaches without moving the wrist.
+  Widget _bottomBar() {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Row(children: [
+          IconButton(
+            icon: const Icon(Icons.close, color: VisorTheme.text, size: 28),
+            iconSize: 28,
+            tooltip: 'Quit routine',
+            // A quit is not a finish — pop `false` so a launcher can tell the
+            // two apart (and knows whether to refresh, e.g., the dashboard).
+            onPressed: () => Navigator.pop(context, false),
+            constraints: const BoxConstraints(
+                minWidth: _controlSize, minHeight: _controlSize),
+          ),
+          const Spacer(),
+          IconButton(
+            icon:
+                const Icon(Icons.skip_next, color: VisorTheme.text, size: 28),
+            iconSize: 28,
+            tooltip: 'Skip step',
+            // A skip is abandoning, not completing: it advances without
+            // recording the current step — no drill row, not a failed step.
+            // The children only write on natural completion, so disposing the
+            // current one via `_next` records nothing.
+            onPressed: _next,
+            constraints: const BoxConstraints(
+                minWidth: _controlSize, minHeight: _controlSize),
+          ),
+        ]),
+      ),
     );
   }
 
@@ -239,23 +294,7 @@ class _SessionRunnerState extends State<SessionRunner> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
       child: Row(children: [
-        IconButton(
-          icon: const Icon(Icons.close, color: VisorTheme.text, size: 20),
-          tooltip: 'Quit routine',
-          // A quit is not a finish — pop `false` so a launcher can tell the
-          // two apart (and knows whether to refresh, e.g., the dashboard).
-          onPressed: () => Navigator.pop(context, false),
-        ),
-        IconButton(
-          icon: const Icon(Icons.skip_next, color: VisorTheme.text, size: 20),
-          tooltip: 'Skip step',
-          // A skip is abandoning, not completing: it advances without
-          // recording the current step — no drill row, not a failed step.
-          // The children only write on natural completion, so disposing the
-          // current one via `_next` records nothing.
-          onPressed: _next,
-        ),
-        const SizedBox(width: 6),
+        // Quit and skip live in [_bottomBar] — one-hand reach.
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [

@@ -111,6 +111,58 @@ void main() {
     expect(find.textContaining('Could not save 1 step'), findsOneWidget);
   });
 
+  testWidgets('quit and skip controls sit in the bottom of the screen, '
+      'where one hand can reach them', (tester) async {
+    final t = routine([
+      ExerciseStep(type: ExerciseType.pursuit, seconds: 3),
+      ExerciseStep(type: ExerciseType.saccadic, seconds: 3),
+    ]);
+    await tester.pumpWidget(MaterialApp(home: SessionRunner(template: t)));
+    await tester.pump(); // autoStart postFrameCallback
+
+    // Both controls must live in the bottom fifth of the screen: the top
+    // corner and the mid-left edge are out of thumb reach on a phone held
+    // in one hand.
+    final height = tester.getSize(find.byType(MaterialApp)).height;
+    for (final tooltip in const ['Quit routine', 'Skip step']) {
+      final center = tester.getCenter(find.byTooltip(tooltip));
+      expect(center.dy, greaterThan(height * 0.8),
+          reason: '$tooltip must sit in the bottom fifth of the screen');
+    }
+
+    // Drain both steps so their tickers don't outlive the test.
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump();
+  });
+
+  testWidgets('quit and skip controls have a comfortable touch target',
+      (tester) async {
+    final t = routine([
+      ExerciseStep(type: ExerciseType.pursuit, seconds: 3),
+      ExerciseStep(type: ExerciseType.saccadic, seconds: 3),
+    ]);
+    await tester.pumpWidget(MaterialApp(home: SessionRunner(template: t)));
+    await tester.pump(); // autoStart postFrameCallback
+
+    // A finger, not a stylus, taps these: the target must be at least
+    // 56 dp on a side (the old 40 dp was hard to hit mid-drill).
+    for (final tooltip in const ['Quit routine', 'Skip step']) {
+      final size = tester.getSize(find.byTooltip(tooltip));
+      expect(size.width, greaterThanOrEqualTo(56),
+          reason: '$tooltip is too narrow to tap reliably');
+      expect(size.height, greaterThanOrEqualTo(56),
+          reason: '$tooltip is too short to tap reliably');
+    }
+
+    // Drain both steps so their tickers don't outlive the test.
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pump();
+  });
+
   testWidgets('the session remaining time counts down and recomputes on '
       'step change', (tester) async {
     final t = routine([
