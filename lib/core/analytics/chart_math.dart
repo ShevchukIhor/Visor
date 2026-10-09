@@ -185,17 +185,18 @@ class ChartWindow {
 /// Day span for the trend chart: always ending today, never narrower than
 /// [minDays].
 ///
-/// The floor is what makes a young history honest. Four days stretched across
-/// the full width read as a long trend; four days in the right-hand four
-/// sevenths read as "you are four days in", with the empty left side saying
-/// so. The right edge is today even when the last session is older, so a gap
-/// in training shows up as a gap.
+/// The window fits the data. A fixed week floor made a young history
+/// unreadable: two days of sessions landed in the right two sevenths of the
+/// axis and collapsed into a vertical whisker. A two-day history now gets a
+/// two-day axis, so its points use the full width. A gap in training still
+/// reads as a gap — the right edge stays today even when the last session is
+/// older.
 ///
 /// [points] must be ordered oldest-first, as [aggregateByDay] returns them.
 ChartWindow chartWindow(
   List<DayPoint> points,
   DateTime now, {
-  int minDays = 7,
+  int minDays = 1,
 }) {
   final today = DateTime(now.year, now.month, now.day);
   var last = today;

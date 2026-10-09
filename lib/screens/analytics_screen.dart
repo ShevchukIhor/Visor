@@ -5,8 +5,26 @@ import 'package:flutter/material.dart';
 import '../core/analytics/chart_math.dart';
 import '../core/db/drill.dart';
 import '../core/db/vision_db.dart';
+import '../core/exercises/exercise_painter.dart';
 import '../core/theme/visor_theme.dart';
 import '../widgets/accuracy_chart.dart';
+
+/// Display name for a history row: an exercise resolves its `params.type`
+/// to the human title ("Convergence Training"), anything else keeps the raw
+/// task id so a future task type still renders.
+String taskDisplayName(Drill d) {
+  if (d.task != taskExercise || d.params == null) return d.task;
+  try {
+    final m = jsonDecode(d.params!) as Map<String, Object?>;
+    final type = m['type'] as String?;
+    for (final e in ExerciseType.values) {
+      if (e.name == type) return e.title;
+    }
+  } catch (_) {
+    // malformed params: fall through to the raw task id
+  }
+  return d.task;
+}
 
 /// Analytics: daily accuracy chart + drill history list.
 class AnalyticsScreen extends StatefulWidget {
@@ -106,7 +124,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         final gabor = _gaborParams(d);
         final label = gabor != null
             ? '${gabor.$1}\u00D7${gabor.$1} \u00B7 ${gabor.$2} \u00B7 ${d.durationS ~/ 60} min'
-            : '${d.task} \u00B7 ${d.durationS ~/ 60} min';
+            : '${taskDisplayName(d)} \u00B7 ${d.durationS ~/ 60} min';
         return Container(
           padding:
               const EdgeInsets.symmetric(horizontal: 14, vertical: 10),

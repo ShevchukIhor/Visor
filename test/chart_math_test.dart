@@ -142,20 +142,21 @@ void main() {
     DateTime day(int daysAgo) =>
         DateTime(today.year, today.month, today.day - daysAgo);
 
-    test('with no data it still spans the minimum window ending today', () {
+    test('with no data the window is today only', () {
       final w = chartWindow([], today);
-      expect(w.days, 7);
+      expect(w.days, 1);
       expect(w.lastDay, DateTime(2026, 3, 15));
-      expect(w.firstDay, DateTime(2026, 3, 9));
+      expect(w.firstDay, DateTime(2026, 3, 15));
     });
 
-    test('four days of history keep the full seven-day window', () {
+    test('the window fits the data: four days of history get a four-day axis',
+        () {
       final pts = aggregateByDay([
         for (var d = 3; d >= 0; d--) sample(day(d)),
       ]);
       final w = chartWindow(pts, today);
-      expect(w.days, 7);
-      expect(w.firstDay, DateTime(2026, 3, 9));
+      expect(w.days, 4);
+      expect(w.firstDay, DateTime(2026, 3, 12));
       expect(w.lastDay, DateTime(2026, 3, 15));
     });
 
@@ -171,7 +172,7 @@ void main() {
       final pts = aggregateByDay([sample(day(5)), sample(day(3))]);
       final w = chartWindow(pts, today);
       expect(w.lastDay, DateTime(2026, 3, 15));
-      expect(w.firstDay, DateTime(2026, 3, 9)); // still 7 days wide
+      expect(w.firstDay, DateTime(2026, 3, 10)); // fits the data: six days wide
     });
 
     test('a session dated in the future extends the window past today', () {
@@ -195,17 +196,17 @@ void main() {
     final today = DateTime(2026, 3, 15);
 
     test('the first day sits on the left edge of the plot', () {
-      final w = chartWindow([], today);
+      final w = chartWindow([], today, minDays: 7);
       expect(w.xFor(w.firstDay, padL, plotW), closeTo(padL, 1e-9));
     });
 
     test('the last day sits on the right edge of the plot', () {
-      final w = chartWindow([], today);
+      final w = chartWindow([], today, minDays: 7);
       expect(w.xFor(w.lastDay, padL, plotW), closeTo(padL + plotW, 1e-9));
     });
 
     test('days are evenly spaced across the window', () {
-      final w = chartWindow([], today); // 7 days → 6 gaps
+      final w = chartWindow([], today, minDays: 7); // 7 days → 6 gaps
       final step = plotW / 6;
       for (var i = 0; i < 7; i++) {
         final d = DateTime(2026, 3, 9 + i);
@@ -233,8 +234,19 @@ void main() {
       expect(w.xFor(today, padL, plotW), closeTo(padL + plotW / 2, 1e-9));
     });
 
+    test('a two-day history spreads its points across the full width', () {
+      // The reported bug: two days of data must not collapse into a whisker
+      // at the right edge of a fixed week.
+      final pts =
+          aggregateByDay([sample(DateTime(2026, 3, 14)), sample(today)]);
+      final w = chartWindow(pts, today);
+      expect(w.days, 2);
+      expect(w.xFor(DateTime(2026, 3, 14), padL, plotW), closeTo(padL, 1e-9));
+      expect(w.xFor(today, padL, plotW), closeTo(padL + plotW, 1e-9));
+    });
+
     test('covers reports whether a day is inside the window', () {
-      final w = chartWindow([], today);
+      final w = chartWindow([], today, minDays: 7);
       expect(w.covers(DateTime(2026, 3, 9)), isTrue);
       expect(w.covers(DateTime(2026, 3, 15)), isTrue);
       expect(w.covers(DateTime(2026, 3, 8)), isFalse);
