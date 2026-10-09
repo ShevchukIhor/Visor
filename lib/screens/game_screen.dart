@@ -82,7 +82,12 @@ class _GameScreenState extends State<GameScreen>
     _trial = _gen.generate(widget.setup.difficulty);
     _secondsLeft = widget.setup.durationS;
     _startedAt = DateTime.now();
-    _reportProgress();
+    // Defer the initial progress report to after the first frame, so the
+    // callback (which calls setState on the parent) does not fire during
+    // the parent's build phase.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _reportProgress();
+    });
     _startTimer();
   }
 
