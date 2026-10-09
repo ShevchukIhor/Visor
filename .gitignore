@@ -39,6 +39,7 @@ rebuild2.log
 # Generated banner experiments (the published banners live in visor-assets/banner_*, graphic_*)
 visor-assets/banner_A*.png
 visor-assets/banner_B*.png
+.mcp.json
 
 
 # Unused CI draft (native CF GitHub App, not Actions)
@@ -77,3 +78,8 @@ dev-docs/
 
 # Скретч оркестрації виконання планів — локальний
 .superpowers/
+
+# Superpowers / AI-assistant artifacts — локальні, не публікуються
+PLAN.md
+REVIEW.md
+TESTING_STATE.md
