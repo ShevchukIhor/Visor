@@ -77,7 +77,7 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen> {
         child: ListView(
           shrinkWrap: true,
           children: [
-            for (final type in ExerciseType.values)
+            for (final type in ExerciseType.values) ...[
               ListTile(
                 title: Text(type.title,
                     style: const TextStyle(color: VisorTheme.text)),
@@ -87,6 +87,19 @@ class _TemplateEditorScreenState extends State<TemplateEditorScreen> {
                       () => _steps.add(ExerciseStep(type: type, seconds: 60)));
                 },
               ),
+              // Near-Far is the only exercise with a target variant, so the
+              // Gabor sphere is offered as its own row, right below it.
+              if (type == ExerciseType.nearFar)
+                ListTile(
+                  title: Text('${type.title} · Gabor sphere',
+                      style: const TextStyle(color: VisorTheme.text)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    setState(() => _steps.add(ExerciseStep(
+                        type: type, seconds: 60, gaborTarget: true)));
+                  },
+                ),
+            ],
             ListTile(
               title: const Text('Gabor Game',
                   style: TextStyle(color: VisorTheme.text)),

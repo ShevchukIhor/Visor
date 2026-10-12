@@ -276,4 +276,36 @@ void main() {
     expect(published, hasLength(7));
     expect(published, everyElement(isEmpty));
   });
+
+  testWidgets('the add-step sheet offers a Gabor Near-Far variant',
+      (tester) async {
+    await tester
+        .pumpWidget(MaterialApp(home: TemplateEditorScreen(template: null)));
+    await tester.pump();
+
+    // Open the add-step sheet.
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+
+    // Both the plain and the Gabor variants are offered.
+    expect(find.text(ExerciseType.nearFar.title), findsOneWidget);
+    expect(find.text('Near-Far Cycles · Gabor sphere'), findsOneWidget);
+
+    // Tapping the Gabor variant adds a step whose tile names it.
+    await tester.tap(find.text('Near-Far Cycles · Gabor sphere'));
+    await tester.pumpAndSettle();
+    expect(find.text('Near-Far Cycles · Gabor sphere'), findsOneWidget);
+
+    // Save and read back: the step must carry gaborTarget: true.
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+      final saved =
+          (await TemplateRepo(await VisionDb.instance.db).all()).single;
+      final step = saved.steps.single;
+      expect(step, isA<ExerciseStep>());
+      expect((step as ExerciseStep).type, ExerciseType.nearFar);
+      expect(step.gaborTarget, isTrue);
+    });
+  });
 }
