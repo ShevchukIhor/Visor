@@ -57,7 +57,10 @@ class ExerciseStep extends TrainingStep {
   final bool gaborTarget;
 
   @override
-  String get title => type.title;
+  String get title =>
+      type == ExerciseType.nearFar && gaborTarget
+          ? '${type.title} · Gabor sphere'
+          : type.title;
 }
 
 class GaborGameStep extends TrainingStep {

@@ -15,6 +15,25 @@ void main() {
     });
   });
 
+  group('ExerciseStep.title', () {
+    test('a plain Near-Far step keeps the base title', () {
+      final s = ExerciseStep(type: ExerciseType.nearFar, seconds: 60);
+      expect(s.title, ExerciseType.nearFar.title);
+    });
+
+    test('a Gabor Near-Far step names the Gabor sphere', () {
+      final s = ExerciseStep(
+          type: ExerciseType.nearFar, seconds: 60, gaborTarget: true);
+      expect(s.title, 'Near-Far Cycles · Gabor sphere');
+    });
+
+    test('gaborTarget on another exercise leaves its title unchanged', () {
+      final s = ExerciseStep(
+          type: ExerciseType.pursuit, seconds: 60, gaborTarget: true);
+      expect(s.title, ExerciseType.pursuit.title);
+    });
+  });
+
   group('isRunnable', () {
     test('a template with no steps cannot start a session', () {
       expect(isRunnable([]), isFalse);
