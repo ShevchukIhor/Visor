@@ -14,6 +14,16 @@ import 'exercises_screen.dart';
 import 'game_screen.dart';
 import '../core/models/session_setup.dart';
 
+/// Fraction of the session elapsed, from 0 (start) to 1 (done). Guards a
+/// zero-length session and clamps so a late tick can never overflow the bar.
+double sessionProgress({
+  required int sessionSecondsLeft,
+  required int totalSeconds,
+}) {
+  if (totalSeconds <= 0) return 0;
+  return (1 - sessionSecondsLeft / totalSeconds).clamp(0.0, 1.0);
+}
+
 /// Walks a routine's steps without returning to any list.
 ///
 /// Each step gets a fresh child keyed by its index: ExerciseRunner builds its
@@ -114,6 +124,10 @@ class _SessionRunnerState extends State<SessionRunner> {
     }
     return left;
   }
+
+  /// The whole routine's duration in seconds: the denominator of the
+  /// time-based progress bar.
+  int get _totalSessionSeconds => _steps.fold(0, (s, step) => s + step.seconds);
 
   void _onGameProgress(int secondsLeft, int correct, int total) {
     if (!mounted) return;
@@ -305,23 +319,14 @@ class _SessionRunnerState extends State<SessionRunner> {
               ),
               // The current step's own top bar is hidden in session mode
               // (see ExerciseRunner.onSecondsLeft / GameScreen.onProgress);
-              // this is where its countdown and score reappear instead.
-              if (_stepSecondsLeft != null) ...[
-                const SizedBox(width: 8),
-                Text(_mmss(_stepSecondsLeft!),
-                    style: const TextStyle(
-                        color: VisorTheme.text,
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold)),
-              ],
-              // The session's remaining time, dim so the step's own
-              // countdown stays the focal number.
-              Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: Text(_mmss(_sessionSecondsLeft()),
-                    style: const TextStyle(
-                        color: VisorTheme.textDim, fontSize: 12)),
-              ),
+              // this is where its countdown reappears as the one big focal
+              // number — full duration until its first tick, then live.
+              const SizedBox(width: 8),
+              Text(_mmss(_stepSecondsLeft ?? _steps[_index].seconds),
+                  style: const TextStyle(
+                      color: VisorTheme.text,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold)),
               if (_stepTotal > 0) ...[
                 const SizedBox(width: 10),
                 Text('✓ $_stepCorrect ✗ ${_stepTotal - _stepCorrect}',
@@ -331,7 +336,9 @@ class _SessionRunnerState extends State<SessionRunner> {
             ]),
             const SizedBox(height: 4),
             LinearProgressIndicator(
-              value: (_index + 1) / total,
+              value: sessionProgress(
+                  sessionSecondsLeft: _sessionSecondsLeft(),
+                  totalSeconds: _totalSessionSeconds),
               backgroundColor: VisorTheme.surfaceAlt,
               color: VisorTheme.primary,
               minHeight: 3,
