@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../core/analytics/chart_math.dart';
@@ -9,6 +9,12 @@ import '../core/db/drill.dart';
 import '../core/gabor/gabor_patch.dart';
 import '../core/theme/visor_theme.dart';
 
+/// Daily Gabor accuracy over a calendar window, drawn with [LineChart].
+///
+/// The axis is time, not session order: a day is one point wherever it falls
+/// in the window, so a gap in training reads as a gap. Accuracy rather than the
+/// weighted score keeps the series comparable with itself when the user changes
+/// level; the level itself is the dot's colour.
 class AccuracyChart extends StatelessWidget {
   final List<Drill> drills;
 
@@ -21,12 +27,133 @@ class AccuracyChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final points = aggregateByDay(gaborSamples(drills).toList());
-    return CustomPaint(
-      painter: AccuracyChartPainter(
-        points: points,
-        window: chartWindow(points, now ?? DateTime.now()),
+    if (points.isEmpty) return const SizedBox.shrink();
+    return _chart(points);
+  }
+
+  /// Split the day points into contiguous runs of adjacent days. fl_chart
+  /// connects the points of one bar with a line, so a run is one bar and the
+  /// line never bridges a skipped day: a gap in training reads as a gap.
+  List<List<DayPoint>> _runs(List<DayPoint> points) {
+    final runs = <List<DayPoint>>[];
+    for (final p in points) {
+      if (runs.isNotEmpty &&
+          dayOrdinal(p.day) - dayOrdinal(runs.last.last.day) == 1) {
+        runs.last.add(p);
+      } else {
+        runs.add([p]);
+      }
+    }
+    return runs;
+  }
+
+  Widget _chart(List<DayPoint> points) {
+    final window = chartWindow(points, now ?? DateTime.now());
+    var minX = dayOrdinal(window.firstDay).toDouble();
+    var maxX = dayOrdinal(window.lastDay).toDouble();
+    // A one-day window has no span to scale against; widen it a day each side
+    // so the single point is centred and the axis labels stay whole dates.
+    if (maxX - minX < 1) {
+      minX -= 1;
+      maxX += 1;
+    }
+    final days = window.days;
+    final int xInterval = days <= 7 ? 1 : (days / 3).ceil();
+
+    return LineChart(
+      LineChartData(
+        minX: minX,
+        maxX: maxX,
+        minY: 0,
+        maxY: 100,
+        lineTouchData: LineTouchData(
+          touchTooltipData: LineTouchTooltipData(
+            getTooltipColor: (_) => VisorTheme.surface,
+            getTooltipItems: (touched) => [
+              for (final s in touched)
+                LineTooltipItem(
+                  '${_dateLabel(s.x)} · ${s.y.toStringAsFixed(0)}%',
+                  const TextStyle(color: VisorTheme.text, fontSize: 12),
+                ),
+            ],
+          ),
+        ),
+        lineBarsData: [
+          for (final run in _runs(points))
+            LineChartBarData(
+              spots: [
+                for (final p in run)
+                  FlSpot(dayOrdinal(p.day).toDouble(), p.mean),
+              ],
+              isCurved: false,
+              barWidth: 2.5,
+              color: VisorTheme.primary,
+              dotData: FlDotData(
+                show: true,
+                getDotPainter: (spot, xPercent, bar, index) {
+                  final p = run[index];
+                  final r = 3.0 + math.min(p.sessions - 1, 5) * 0.7;
+                  return FlDotCirclePainter(
+                    color: p.difficulty.color,
+                    radius: r,
+                  );
+                },
+              ),
+            ),
+        ],
+        titlesData: FlTitlesData(
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 28,
+              interval: 50,
+              getTitlesWidget: (value, meta) => Text(
+                '${value.toInt()}%',
+                style: const TextStyle(
+                    color: VisorTheme.textDim, fontSize: 10),
+              ),
+            ),
+          ),
+          rightTitles:
+              AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 20,
+              interval: xInterval.toDouble(),
+              getTitlesWidget: (value, meta) => Text(
+                _dateLabel(value),
+                style: const TextStyle(
+                    color: VisorTheme.textDim, fontSize: 10),
+              ),
+            ),
+          ),
+        ),
+        gridData: FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          horizontalInterval: 50,
+          getDrawingHorizontalLine: (value) => FlLine(
+            color: VisorTheme.textDim.withValues(alpha: 0.25),
+            strokeWidth: 1,
+          ),
+        ),
+        borderData: FlBorderData(show: false),
       ),
     );
+  }
+
+  /// Invert [dayOrdinal]: days since the epoch back to a local calendar date.
+  DateTime _dateFromOrdinal(double ordinal) {
+    final ms = ordinal.toInt() * Duration.millisecondsPerDay;
+    final utc = DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true);
+    return DateTime(utc.year, utc.month, utc.day);
+  }
+
+  String _dateLabel(double ordinal) {
+    final d = _dateFromOrdinal(ordinal);
+    return '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}';
   }
 }
 
@@ -104,163 +231,4 @@ class AccuracyChartLegend extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Daily accuracy over a calendar window.
-///
-/// The axis is time, not session order: a day is one point wherever it falls
-/// in the window, so a gap in training reads as a gap. Accuracy rather than
-/// the weighted score keeps the series comparable with itself when the user
-/// changes level; the level itself is the dot's colour.
-class AccuracyChartPainter extends CustomPainter {
-  final List<DayPoint> points;
-  final ChartWindow window;
-  AccuracyChartPainter({required this.points, required this.window});
-
-  static const double padL = 34;
-  static const double padR = 14;
-  static const double padT = 22;
-  static const double padB = 20;
-
-  /// Days on the axis beyond which per-day labels stop fitting.
-  static const int maxDayLabels = 7;
-
-  static String _date(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}';
-
-  void _label(Canvas canvas, TextPainter tp, String text, TextStyle style,
-      double centreX, double y, double w) {
-    tp.text = TextSpan(text: text, style: style);
-    tp.layout(maxWidth: double.infinity);
-    // Measured, not a fixed offset: the last label used to clip off the right
-    // edge on narrow screens.
-    final x = (centreX - tp.width / 2)
-        .clamp(0.0, math.max(w - tp.width, 0.0))
-        .toDouble();
-    tp.paint(canvas, Offset(x, y));
-  }
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (points.isEmpty) return;
-    final w = size.width;
-    final h = size.height;
-    final plotW = math.max(w - padL - padR, 1).toDouble();
-    final plotH = math.max(h - padT - padB, 1).toDouble();
-    final baseY = padT + plotH;
-
-    final tp = TextPainter(textDirection: TextDirection.ltr);
-    // fontFamily matches VisorTheme.theme: a CustomPainter builds its own
-// TextStyle and would otherwise label the axes in the platform default.
-    const dimStyle = TextStyle(
-        color: VisorTheme.textDim, fontSize: 10, fontFamily: 'Roboto');
-
-    // Accuracy is a percentage, so the axis is fixed 0..100 — no data-driven
-    // ceiling that would squash a run of good days into the top of the plot.
-    double yFor(double accuracy) => baseY - (accuracy / 100) * plotH;
-
-    final grid = Paint()
-      ..color = VisorTheme.textDim.withValues(alpha: 0.25)
-      ..strokeWidth = 1;
-    for (final pct in [0.0, 50.0, 100.0]) {
-      final y = yFor(pct);
-      canvas.drawLine(Offset(padL, y), Offset(padL + plotW, y), grid);
-      _label(canvas, tp, pct.toStringAsFixed(0), dimStyle, padL - 14, y - 7,
-          padL - 2);
-    }
-
-    double x(DayPoint p) => window.xFor(p.day, padL, plotW);
-
-    // X labels: every day while they fit, otherwise the two ends and the
-    // middle of the window.
-    final days = window.days;
-    final ticks = <DateTime>[];
-    if (days <= maxDayLabels) {
-      for (var i = 0; i < days; i++) {
-        ticks.add(DateTime(
-            window.firstDay.year, window.firstDay.month, window.firstDay.day + i));
-      }
-    } else {
-      for (final f in [0, days ~/ 2, days - 1]) {
-        ticks.add(DateTime(
-            window.firstDay.year, window.firstDay.month, window.firstDay.day + f));
-      }
-    }
-    for (final d in ticks) {
-      _label(canvas, tp, _date(d), dimStyle,
-          window.xFor(d, padL, plotW), baseY + 6, w);
-    }
-
-    // Spread of the day: a thin whisker from its worst to its best session, so
-    // the mean is not mistaken for a single measurement.
-    final whisker = Paint()
-      ..color = VisorTheme.textDim.withValues(alpha: 0.45)
-      ..strokeWidth = 1.5
-      ..strokeCap = StrokeCap.round;
-    for (final p in points) {
-      if (p.sessions < 2) continue;
-      canvas.drawLine(
-          Offset(x(p), yFor(p.worst)), Offset(x(p), yFor(p.best)), whisker);
-    }
-
-    // Trend line. A segment that bridges skipped days is dashed: the user did
-    // not train through it, so a solid line would invent data.
-    final line = Paint()
-      ..color = VisorTheme.primary
-      ..strokeWidth = 2.5
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-    for (var i = 1; i < points.length; i++) {
-      final a = Offset(x(points[i - 1]), yFor(points[i - 1].mean));
-      final b = Offset(x(points[i]), yFor(points[i].mean));
-      final adjacent =
-          dayOrdinal(points[i].day) - dayOrdinal(points[i - 1].day) == 1;
-      if (adjacent) {
-        canvas.drawLine(a, b, line);
-      } else {
-        _dashed(canvas, a, b, line);
-      }
-    }
-
-    // Dots, sized by how many sessions the day holds.
-    for (final p in points) {
-      final r = 3.0 + math.min(p.sessions - 1, 5) * 0.7;
-      canvas.drawCircle(Offset(x(p), yFor(p.mean)), r,
-          Paint()..color = p.difficulty.color);
-    }
-
-    final last = points.last;
-    final lastY = yFor(last.mean);
-    _label(
-      canvas,
-      tp,
-      '${last.mean.toStringAsFixed(0)}%',
-      const TextStyle(
-          color: VisorTheme.text,
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-          fontFamily: 'Roboto'),
-      x(last),
-      math.max(lastY - 20, 4),
-      w,
-    );
-  }
-
-  void _dashed(Canvas canvas, Offset a, Offset b, Paint paint) {
-    const dash = 5.0;
-    const gap = 4.0;
-    final total = (b - a).distance;
-    if (total <= 0) return;
-    final step = (b - a) / total;
-    var t = 0.0;
-    while (t < total) {
-      final end = math.min(t + dash, total);
-      canvas.drawLine(a + step * t, a + step * end, paint);
-      t = end + gap;
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant AccuracyChartPainter old) =>
-      old.window != window || !listEquals(old.points, points);
 }
