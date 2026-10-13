@@ -81,6 +81,17 @@ class TemplateRepo {
     await _db.delete('templates', where: 'id = ?', whereArgs: [id]);
   }
 
+  /// Sets each template's `position` to its index in [orderedIds], so the
+  /// list renders in that order. Used by the drag-to-reorder gesture.
+  Future<void> reorder(List<int> orderedIds) async {
+    await _db.transaction((txn) async {
+      for (var i = 0; i < orderedIds.length; i++) {
+        await txn.update('templates', {'position': i},
+            where: 'id = ?', whereArgs: [orderedIds[i]]);
+      }
+    });
+  }
+
   Future<Map<int, int?>> weekPlan() async {
     final rows = await _db.query('week_plan');
     return {

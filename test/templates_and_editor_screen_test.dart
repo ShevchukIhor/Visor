@@ -63,6 +63,58 @@ void main() {
     expect(find.text('Duplicate'), findsOneWidget);
   });
 
+  testWidgets('dragging a routine reorders the list and persists it',
+      (tester) async {
+    await tester.runAsync(() async {
+      final repo = TemplateRepo(await VisionDb.instance.db);
+      await repo.save(Template(id: 0, name: 'First', builtin: false,
+          steps: [ExerciseStep(type: ExerciseType.orbs, seconds: 30)]));
+      await repo.save(Template(id: 0, name: 'Second', builtin: false,
+          steps: [ExerciseStep(type: ExerciseType.orbs, seconds: 30)]));
+      // Mark the presets as seeded so the screen's _load (which calls
+      // seedPresets) does not add the four defaults to this two-item list.
+      final db = await VisionDb.instance.db;
+      await db.insert('meta', {'key': 'presets_seeded', 'value': 1},
+          conflictAlgorithm: ConflictAlgorithm.replace);
+    });
+    await tester.runAsync(() async {
+      await tester.pumpWidget(const MaterialApp(home: TemplatesScreen()));
+      for (var i = 0;
+          i < 40 &&
+          find.byType(CircularProgressIndicator).evaluate().isNotEmpty;
+          i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await tester.pump();
+      }
+    });
+    // The list is Second (top), First. Drag the top row's handle below First.
+    // The handle starts a drag on pointer-down; move in small steps so the
+    // list tracks the drag, and overshoot the target (the editor's drag test
+    // found that landing exactly on the next item is not enough).
+    final start = tester.getCenter(find.byType(ReorderableDragStartListener).first);
+    final target = tester.getCenter(find.text('First'));
+    final end = target + (target - start);
+    final drag = await tester.startGesture(start);
+    await tester.pump();
+    for (var i = 1; i <= 8; i++) {
+      await drag.moveTo(start + (end - start) * (i / 8));
+      await tester.pump();
+    }
+    await drag.up();
+    await tester.runAsync(() async {
+      await tester.pumpAndSettle();
+      for (var i = 0;
+          i < 40 &&
+          find.byType(CircularProgressIndicator).evaluate().isNotEmpty;
+          i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await tester.pump();
+      }
+      final all = await TemplateRepo(await VisionDb.instance.db).all();
+      expect(all.map((x) => x.name), ['First', 'Second']);
+    });
+  });
+
   testWidgets('a routine with nothing runnable disables Start and says why',
       (tester) async {
     await tester.runAsync(() async {

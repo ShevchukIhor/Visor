@@ -158,11 +158,15 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                   child: Text('No routines yet',
                       style: TextStyle(color: VisorTheme.textDim)),
                 )
-              : ListView.separated(
+              : ReorderableListView.builder(
                   padding: const EdgeInsets.all(16),
                   itemCount: _templates.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 10),
-                  itemBuilder: (ctx, i) => _row(_templates[i]),
+                  onReorderItem: (from, to) => _reorder(from, to),
+                  itemBuilder: (ctx, i) => Padding(
+                    key: ValueKey(_templates[i].id),
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _row(_templates[i], i),
+                  ),
                 ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => Navigator.push(
@@ -175,7 +179,19 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
     );
   }
 
-  Widget _row(Template t) {
+  /// Persists a drag-reorder: move the item from [from] to [to] in the local
+  /// list, write the new order to the database, then reload.
+  Future<void> _reorder(int from, int to) async {
+    final next = List.of(_templates);
+    next.insert(to, next.removeAt(from));
+    setState(() => _templates = next);
+    final repo = _repo;
+    if (repo == null) return;
+    await repo.reorder(next.map((t) => t.id).toList());
+    await _load();
+  }
+
+  Widget _row(Template t, int index) {
     final runnable = isRunnable(t.steps);
     final mins = (t.totalSeconds / 60).round();
     return Material(
@@ -195,6 +211,16 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(children: [
+            // Only the handle starts a drag; the rest of the row keeps its
+            // tap (start) and long-press (action sheet).
+            ReorderableDragStartListener(
+              index: index,
+              child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: Icon(Icons.drag_handle,
+                    color: VisorTheme.textDim, size: 20),
+              ),
+            ),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

@@ -196,4 +196,16 @@ void main() {
     expect((await repo.all()).map((x) => x.name),
         ['Screen break', 'Morning', 'Wind down', 'Sharpen']);
   });
+
+  test('reorder rewrites positions in the given order', () async {
+    final a =
+        await repo.save(t('A', [ExerciseStep(type: ExerciseType.orbs, seconds: 30)]));
+    final b =
+        await repo.save(t('B', [ExerciseStep(type: ExerciseType.orbs, seconds: 30)]));
+    final c =
+        await repo.save(t('C', [ExerciseStep(type: ExerciseType.orbs, seconds: 30)]));
+    // After three new-at-top saves the list is C, B, A.
+    await repo.reorder([a, c, b]);
+    expect((await repo.all()).map((x) => x.id), [a, c, b]);
+  });
 }
