@@ -57,6 +57,21 @@ class _WeekPlanScreenState extends State<WeekPlanScreen> {
     } catch (_) {}
   }
 
+  /// Fills all seven days from the existing routines (cycling). If there is
+  /// nothing to draw from, say so instead of clearing the plan.
+  Future<void> _generate() async {
+    final ok = await _repo.applyGeneratedWeekPlan();
+    if (!mounted) return;
+    if (ok) {
+      await _publishLabels();
+      await _load();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No routines to generate from')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -65,6 +80,12 @@ class _WeekPlanScreenState extends State<WeekPlanScreen> {
         backgroundColor: VisorTheme.bg,
         foregroundColor: VisorTheme.text,
         title: const Text('Weekly plan'),
+        actions: [
+          TextButton(
+            onPressed: _loading ? null : _generate,
+            child: const Text('Generate'),
+          ),
+        ],
       ),
       body: _loading
           ? const Center(

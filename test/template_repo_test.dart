@@ -208,4 +208,39 @@ void main() {
     await repo.reorder([a, c, b]);
     expect((await repo.all()).map((x) => x.id), [a, c, b]);
   });
+
+  test('generatedWeekPlan cycles routines across all seven days', () async {
+    final a =
+        await repo.save(t('A', [ExerciseStep(type: ExerciseType.orbs, seconds: 30)]));
+    final b =
+        await repo.save(t('B', [ExerciseStep(type: ExerciseType.orbs, seconds: 30)]));
+    final c =
+        await repo.save(t('C', [ExerciseStep(type: ExerciseType.orbs, seconds: 30)]));
+    final plan = generatedWeekPlan([
+      Template(id: a, name: 'A', builtin: false, steps: const []),
+      Template(id: b, name: 'B', builtin: false, steps: const []),
+      Template(id: c, name: 'C', builtin: false, steps: const []),
+    ]);
+    expect(plan, {1: a, 2: b, 3: c, 4: a, 5: b, 6: c, 7: a});
+  });
+
+  test('generatedWeekPlan with no routines is all rest days', () {
+    expect(generatedWeekPlan(const []),
+        {1: null, 2: null, 3: null, 4: null, 5: null, 6: null, 7: null});
+  });
+
+  test('applyGeneratedWeekPlan fills every day from the existing routines',
+      () async {
+    await repo.save(t('A', [ExerciseStep(type: ExerciseType.orbs, seconds: 30)]));
+    await repo.save(t('B', [ExerciseStep(type: ExerciseType.orbs, seconds: 30)]));
+    expect(await repo.applyGeneratedWeekPlan(), isTrue);
+    final plan = await repo.weekPlan();
+    expect(plan.values.where((v) => v != null).length, 7);
+  });
+
+  test('applyGeneratedWeekPlan with no routines returns false and changes nothing',
+      () async {
+    expect(await repo.applyGeneratedWeekPlan(), isFalse);
+    expect((await repo.weekPlan()).values.every((v) => v == null), isTrue);
+  });
 }

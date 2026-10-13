@@ -115,6 +115,34 @@ void main() {
     });
   });
 
+  testWidgets('the Generate button fills all seven days', (tester) async {
+    await tester.runAsync(() async {
+      await TemplateRepo(await VisionDb.instance.db).seedPresets();
+      await tester.pumpWidget(const MaterialApp(home: WeekPlanScreen()));
+      for (var i = 0;
+          i < 40 &&
+          find.byType(CircularProgressIndicator).evaluate().isNotEmpty;
+          i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await tester.pump();
+      }
+    });
+    expect(find.text('Generate'), findsOneWidget);
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Generate'));
+      // _generate() is async (DB write + label publish + reload) and is not
+      // awaited by the tap; poll until the plan is actually filled.
+      for (var i = 0;
+          i < 60 && find.text('Rest day').evaluate().isNotEmpty;
+          i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await tester.pump();
+      }
+    });
+    // Four presets cycle across seven days, so no day is left a rest day.
+    expect(find.text('Rest day'), findsNothing);
+  });
+
   testWidgets('a routine with nothing runnable disables Start and says why',
       (tester) async {
     await tester.runAsync(() async {

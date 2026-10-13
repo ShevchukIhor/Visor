@@ -109,6 +109,17 @@ class TemplateRepo {
     );
   }
 
+  /// Fills all seven weekdays from the existing routines (cycling). Returns
+  /// false and changes nothing when there is no routine to draw from.
+  Future<bool> applyGeneratedWeekPlan() async {
+    final templates = await all();
+    if (templates.isEmpty) return false;
+    for (final e in generatedWeekPlan(templates).entries) {
+      await setWeekday(e.key, e.value);
+    }
+    return true;
+  }
+
   Future<Template?> forWeekday(int weekday) async {
     final id = (await weekPlan())[weekday];
     if (id == null) return null;
@@ -220,6 +231,18 @@ class TemplateRepo {
         throw StateError('Unknown training step kind: ${r['kind']}');
     }
   }
+}
+
+/// Assigns a routine to each of the seven weekdays, cycling through
+/// [templates] in order. An empty list yields all rest days.
+Map<int, int?> generatedWeekPlan(List<Template> templates) {
+  if (templates.isEmpty) {
+    return {for (var d = 1; d <= 7; d++) d: null};
+  }
+  return {
+    for (var d = 1; d <= 7; d++)
+      d: templates[(d - 1) % templates.length].id,
+  };
 }
 
 /// One label per ISO weekday, index 0 = Monday, null where the day has no
