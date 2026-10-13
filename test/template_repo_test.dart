@@ -184,4 +184,16 @@ void main() {
     await repo.seedPresets(); // must not resurrect the deleted defaults
     expect((await repo.all()).where((t) => t.builtin), isEmpty);
   });
+
+  test('a new routine is inserted at the top of the list', () async {
+    await repo.save(t('A', [ExerciseStep(type: ExerciseType.orbs, seconds: 30)]));
+    await repo.save(t('B', [ExerciseStep(type: ExerciseType.orbs, seconds: 30)]));
+    expect((await repo.all()).map((x) => x.name), ['B', 'A']);
+  });
+
+  test('presets keep their intended top-to-bottom order', () async {
+    await repo.seedPresets();
+    expect((await repo.all()).map((x) => x.name),
+        ['Screen break', 'Morning', 'Wind down', 'Sharpen']);
+  });
 }

@@ -32,22 +32,36 @@ class TemplateRepo {
     ];
   }
 
-  /// Insert when [t.id] is 0, otherwise replace in place. Steps are always
-  /// rewritten wholesale: reordering and deletion make an incremental diff
-  /// more code than it is worth at this size.
-  Future<int> save(Template t) async {
+  /// Insert when [t.id] is 0, otherwise replace in place. A new routine goes
+  /// to the top of the list by default ([newAtTop]); [seedPresets] passes
+  /// `newAtTop: false` so the bundled presets keep their intended order.
+  /// Steps are always rewritten wholesale: reordering and deletion make an
+  /// incremental diff more code than it is worth at this size.
+  Future<int> save(Template t, {bool newAtTop = true}) async {
     return _db.transaction((txn) async {
       var id = t.id;
       if (id == 0) {
-        final maxPos = Sqflite.firstIntValue(await txn
-                .rawQuery('SELECT MAX(position) FROM templates')) ??
-            0;
-        id = await txn.insert('templates', {
-          'name': t.name,
-          'builtin': t.builtin ? 1 : 0,
-          'position': maxPos + 1,
-          'created_at': DateTime.now().millisecondsSinceEpoch,
-        });
+        if (newAtTop) {
+          // Push every existing routine down one slot so the new one takes
+          // the top of the list.
+          await txn.rawUpdate('UPDATE templates SET position = position + 1');
+          id = await txn.insert('templates', {
+            'name': t.name,
+            'builtin': t.builtin ? 1 : 0,
+            'position': 0,
+            'created_at': DateTime.now().millisecondsSinceEpoch,
+          });
+        } else {
+          final maxPos = Sqflite.firstIntValue(await txn
+                  .rawQuery('SELECT MAX(position) FROM templates')) ??
+              0;
+          id = await txn.insert('templates', {
+            'name': t.name,
+            'builtin': t.builtin ? 1 : 0,
+            'position': maxPos + 1,
+            'created_at': DateTime.now().millisecondsSinceEpoch,
+          });
+        }
       } else {
         await txn.update('templates', {'name': t.name},
             where: 'id = ?', whereArgs: [id]);
@@ -105,7 +119,7 @@ class TemplateRepo {
         0;
     if (seeded == 1) return;
     for (final t in _presets) {
-      await save(t);
+      await save(t, newAtTop: false);
     }
     await _db.insert('meta', {'key': 'presets_seeded', 'value': 1},
         conflictAlgorithm: ConflictAlgorithm.replace);
