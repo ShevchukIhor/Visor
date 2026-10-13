@@ -61,10 +61,10 @@ class TemplateRepo {
     });
   }
 
-  /// Builtins can be run, copied and edited, but never deleted.
+  /// Deletes a routine, builtin or not. The week-plan foreign key
+  /// (`ON DELETE SET NULL`) frees any weekday that pointed at it.
   Future<void> delete(int id) async {
-    await _db.delete('templates',
-        where: 'id = ? AND builtin = 0', whereArgs: [id]);
+    await _db.delete('templates', where: 'id = ?', whereArgs: [id]);
   }
 
   Future<Map<int, int?>> weekPlan() async {
@@ -94,19 +94,21 @@ class TemplateRepo {
     return null;
   }
 
-  /// Ship four routines so the list is never an empty page. Idempotent: it
-  /// does nothing once any builtin template exists. Guarding on builtins
-  /// specifically (rather than any template) is safe only because [delete]
-  /// refuses to remove a builtin — otherwise deleting all four would
-  /// resurrect them on the next app start.
+  /// Ship four routines so the list is never an empty page. Runs once: the
+  /// `presets_seeded` flag in the `meta` table is set after the first seed,
+  /// so deleting the defaults later does not resurrect them on the next
+  /// launch (the old "any builtin exists" guard could not tell a fresh
+  /// install from a user who had deleted every default).
   Future<void> seedPresets() async {
-    final n = Sqflite.firstIntValue(await _db
-            .rawQuery('SELECT COUNT(*) FROM templates WHERE builtin = 1')) ??
+    final seeded = Sqflite.firstIntValue(await _db
+            .rawQuery("SELECT value FROM meta WHERE key = 'presets_seeded'")) ??
         0;
-    if (n > 0) return;
+    if (seeded == 1) return;
     for (final t in _presets) {
       await save(t);
     }
+    await _db.insert('meta', {'key': 'presets_seeded', 'value': 1},
+        conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   static final List<Template> _presets = [

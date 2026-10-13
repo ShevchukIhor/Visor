@@ -100,9 +100,9 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
     await _load();
   }
 
-  /// Builtins can be run, copied and edited, but never deleted — offer
-  /// Duplicate in their place rather than a Delete action that would only
-  /// silently fail.
+  /// Every routine can be deleted (builtins included — the `presets_seeded`
+  /// flag keeps a deleted default from coming back). A builtin additionally
+  /// offers Duplicate, so the user can keep a copy before removing it.
   void _showActionSheet(Template t) {
     showModalBottomSheet(
       context: context,
@@ -124,18 +124,17 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                   Navigator.pop(ctx);
                   _duplicate(t);
                 },
-              )
-            else
-              ListTile(
-                leading: const Icon(Icons.delete_outline,
-                    color: VisorTheme.danger),
-                title: const Text('Delete',
-                    style: TextStyle(color: VisorTheme.danger)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _confirmDelete(t);
-                },
               ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline,
+                  color: VisorTheme.danger),
+              title: const Text('Delete',
+                  style: TextStyle(color: VisorTheme.danger)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _confirmDelete(t);
+              },
+            ),
           ],
         ),
       ),

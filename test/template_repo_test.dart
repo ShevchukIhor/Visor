@@ -19,9 +19,9 @@ void main() {
     db = await databaseFactory.openDatabase(
       inMemoryDatabasePath,
       options: OpenDatabaseOptions(
-        version: 4,
+        version: 5,
         onConfigure: (d) => d.execute('PRAGMA foreign_keys = ON'),
-        onCreate: (d, v) => VisionDb.createV4ForTest(d),
+        onCreate: (d, v) => VisionDb.createV5ForTest(d),
       ),
     );
     repo = TemplateRepo(db);
@@ -168,18 +168,20 @@ void main() {
     expect(labels[0], contains('min'));
   });
 
-  test(
-      'deleting a builtin template is refused, but a user template deletes '
-      'normally', () async {
+  test('deleting a builtin template now removes it', () async {
     await repo.seedPresets();
-    final builtin = (await repo.all()).first;
+    final builtin = (await repo.all()).firstWhere((t) => t.builtin);
     await repo.delete(builtin.id);
-    expect((await repo.all()).map((tpl) => tpl.id), contains(builtin.id));
+    expect((await repo.all()).map((t) => t.id), isNot(contains(builtin.id)));
+  });
 
-    final userId = await repo.save(t('Mine', [
-      ExerciseStep(type: ExerciseType.orbs, seconds: 30),
-    ]));
-    await repo.delete(userId);
-    expect((await repo.all()).map((tpl) => tpl.id), isNot(contains(userId)));
+  test('deleting all builtins keeps them deleted across a re-seed', () async {
+    await repo.seedPresets();
+    for (final b in (await repo.all()).where((t) => t.builtin).toList()) {
+      await repo.delete(b.id);
+    }
+    expect((await repo.all()).where((t) => t.builtin), isEmpty);
+    await repo.seedPresets(); // must not resurrect the deleted defaults
+    expect((await repo.all()).where((t) => t.builtin), isEmpty);
   });
 }

@@ -66,12 +66,12 @@ class VisionDb {
     final path = p.join(await getDatabasesPath(), 'visor.db');
     return openDatabase(
       path,
-      version: 4,
+      version: 5,
       onConfigure: (d) async {
         await d.execute('PRAGMA foreign_keys = ON');
       },
       onCreate: (d, v) async {
-        await _createV4(d);
+        await _createV5(d);
         await d.execute('''
           CREATE TABLE reminder (
             id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -98,11 +98,43 @@ class VisionDb {
       await _backfillSessionsIntoDrills(d);
       await d.execute('DROP TABLE IF EXISTS vision_sessions');
     }
+    if (oldV < 5) {
+      // A v4 install always still has its builtins (they could not be
+      // deleted), so mark the presets as already seeded: a later seedPresets
+      // must not resurrect defaults the user has since removed.
+      await d.execute('''
+        CREATE TABLE IF NOT EXISTS meta (
+          key TEXT PRIMARY KEY,
+          value INTEGER NOT NULL
+        )
+      ''');
+      final hasBuiltin = Sqflite.firstIntValue(
+              await d.rawQuery('SELECT COUNT(*) FROM templates WHERE builtin = 1')) ??
+          0;
+      if (hasBuiltin > 0) {
+        await d.insert('meta', {'key': 'presets_seeded', 'value': 1},
+            conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+    }
   }
 
   /// The v4 DDL, for tests that need the schema without the app's database
   /// file. Production goes through [_open].
   static Future<void> createV4ForTest(Database d) => _createV4(d);
+
+  /// The v5 DDL: v4 plus the `meta` table that holds one-time flags such as
+  /// `presets_seeded`.
+  static Future<void> createV5ForTest(Database d) => _createV5(d);
+
+  static Future<void> _createV5(Database d) async {
+    await _createV4(d);
+    await d.execute('''
+      CREATE TABLE meta (
+        key TEXT PRIMARY KEY,
+        value INTEGER NOT NULL
+      )
+    ''');
+  }
 
   static Future<void> _createV4(Database d) async {
     await d.execute('''

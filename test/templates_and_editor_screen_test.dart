@@ -41,6 +41,26 @@ void main() {
     await db.delete('template_steps');
     await db.delete('templates');
     await db.delete('week_plan');
+    await db.delete('meta');
+  });
+
+  testWidgets('a builtin routine offers Delete in its action sheet',
+      (tester) async {
+    await tester.runAsync(() async {
+      await TemplateRepo(await VisionDb.instance.db).seedPresets();
+      await tester.pumpWidget(const MaterialApp(home: TemplatesScreen()));
+      for (var i = 0;
+          i < 40 &&
+          find.byType(CircularProgressIndicator).evaluate().isNotEmpty;
+          i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await tester.pump();
+      }
+    });
+    await tester.longPress(find.text('Screen break'));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete'), findsOneWidget);
+    expect(find.text('Duplicate'), findsOneWidget);
   });
 
   testWidgets('a routine with nothing runnable disables Start and says why',
