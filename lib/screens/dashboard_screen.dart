@@ -8,6 +8,7 @@ import 'exercises_screen.dart';
 import 'reminder_screen.dart';
 import 'setup_screen.dart';
 import 'templates_screen.dart';
+import 'week_plan_screen.dart';
 import 'about_screen.dart';
 import '../widgets/today_card.dart';
 
@@ -94,6 +95,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const TemplatesScreen()),
+                ).then((_) => _load()),
+              ),
+              _menuButton(
+                icon: Icons.calendar_month,
+                title: 'Weekly plan',
+                subtitle: 'Assign a routine to each weekday',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const WeekPlanScreen()),
                 ).then((_) => _load()),
               ),
               _menuButton(
