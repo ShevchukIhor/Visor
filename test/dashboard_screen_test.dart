@@ -40,4 +40,22 @@ void main() {
       expect(find.byType(WeekPlanScreen), findsOneWidget);
     });
   });
+
+  testWidgets('the dashboard scrolls to reveal the last menu button',
+      (tester) async {
+    // The default 800x600 test surface: the dashboard's content is taller than
+    // the screen, so it must scroll (not overflow).
+    await tester.runAsync(() async {
+      await tester.pumpWidget(const MaterialApp(home: DashboardScreen()));
+      await tester.pump();
+    });
+    // The last menu button sits below the fold.
+    final before = tester.getTopLeft(find.text('Support Visor')).dy;
+    // Scrolling must move it up into the visible area.
+    await tester.drag(find.byType(MaterialApp), const Offset(0, -400));
+    await tester.pump();
+    final after = tester.getTopLeft(find.text('Support Visor')).dy;
+    expect(after, lessThan(before),
+        reason: 'the dashboard must scroll to reveal the last menu button');
+  });
 }

@@ -51,9 +51,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Scaffold(
       backgroundColor: VisorTheme.bg,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
@@ -143,7 +144,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   MaterialPageRoute(builder: (_) => const AboutScreen()),
                 ),
               ),
-              const Spacer(),
+              const SizedBox(height: 24),
               Center(
                 child: Text(
                   'Next break: train daily to build your streak',
@@ -163,6 +164,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ),
             ],
+            ),
           ),
         ),
       ),
