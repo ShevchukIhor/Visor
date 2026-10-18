@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../core/db/drill.dart';
 import '../core/db/vision_db.dart';
@@ -101,11 +102,18 @@ class _SessionRunnerState extends State<SessionRunner> {
     // step's dispose puts the system bars back right after the incoming step
     // hid them — from the second step onward the bars just stay visible.
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    // Keep the screen on for the whole routine, owned here for the same
+    // build-before-dispose reason: a step's dispose would release the
+    // wakelock right after the next step's start re-took it. Exercise steps
+    // have no touch input at all, and a routine outlasts the device's
+    // screen timeout — a locked screen would kill a running drill mid-step.
+    WakelockPlus.enable();
   }
 
   @override
   void dispose() {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    WakelockPlus.disable();
     _status.dispose();
     super.dispose();
   }

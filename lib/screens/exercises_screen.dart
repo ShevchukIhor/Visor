@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../core/db/drill.dart';
 import '../core/db/vision_db.dart';
@@ -311,11 +312,20 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
     }
     if (widget.onDone == null) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      // Safety net for the exit path: `_finish` already released the
+      // wakelock for a completed drill, but an early exit disposes
+      // without going through `_finish`.
+      WakelockPlus.disable();
     }
     super.dispose();
   }
 
   void _start() {
+    // Keep the screen on while the drill runs: the user moves their eyes,
+    // not their thumb, so no touch input ever resets the device's screen
+    // timeout — a 60s exercise on a 30s timeout would lock mid-drill.
+    // In routine mode `SessionRunner` owns this for the whole routine.
+    if (widget.onDone == null) WakelockPlus.enable();
     setState(() {
       _running = true;
       _finished = false;
@@ -347,6 +357,9 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
     _ticker?.cancel();
     _ctrl.stop();
     _clock.stop();
+    // The timer is done; the finish card is static, so the screen can
+    // time out normally. In routine mode the session owns the wakelock.
+    if (widget.onDone == null) WakelockPlus.disable();
     setState(() {
       _running = false;
       _finished = true;

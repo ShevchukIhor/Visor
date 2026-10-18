@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../core/db/drill.dart';
 import '../core/db/vision_db.dart';
@@ -81,6 +82,11 @@ class _GameScreenState extends State<GameScreen>
       // this for the whole routine instead, so the bars don't flash back on
       // between steps.
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      // Keep the screen on while the session runs: studying a 5×5 grid can
+      // take longer than the device's screen timeout, and a locked screen
+      // kills a running drill. In routine mode `SessionRunner` owns this
+      // for the whole routine instead (see its initState).
+      WakelockPlus.enable();
     }
     _gen = TrialGenerator(curved: widget.setup.curved);
     _trial = _gen.generate(widget.setup.difficulty);
@@ -114,6 +120,9 @@ class _GameScreenState extends State<GameScreen>
 
   void _finish() {
     _timer?.cancel();
+    // The timer is done; the result card is static, so the screen can
+    // time out normally. In routine mode the session owns the wakelock.
+    if (widget.onDone == null) WakelockPlus.disable();
     setState(() => _finished = true);
     _reveal.forward(from: 0);
     _save();
@@ -248,6 +257,10 @@ class _GameScreenState extends State<GameScreen>
     _reveal.dispose();
     if (widget.onDone == null) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      // Safety net for the exit path: `_finish` already released the
+      // wakelock for a completed session, but an early exit disposes
+      // without going through `_finish`.
+      WakelockPlus.disable();
     }
     super.dispose();
   }
