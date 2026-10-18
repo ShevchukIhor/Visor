@@ -8,8 +8,15 @@ import 'exercises_screen.dart';
 import 'reminder_screen.dart';
 import 'setup_screen.dart';
 import 'templates_screen.dart';
+import 'week_plan_screen.dart';
 import 'about_screen.dart';
 import '../widgets/today_card.dart';
+
+/// Plural-aware stat labels: "1 day" / "5 days", "1 session" / "3 sessions".
+/// Top-level (not a method) so the grammar is unit-testable without a widget.
+String streakLabel(int days) => days == 1 ? '1 day' : '$days days';
+
+String sessionsLabel(int n) => n == 1 ? '1 session' : '$n sessions';
 
 /// Home dashboard: streak, today, best, and navigation to training modes.
 class DashboardScreen extends StatefulWidget {
@@ -50,9 +57,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Scaffold(
       backgroundColor: VisorTheme.bg,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
@@ -97,6 +105,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ).then((_) => _load()),
               ),
               _menuButton(
+                icon: Icons.calendar_month,
+                title: 'Weekly plan',
+                subtitle: 'Assign a routine to each weekday',
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const WeekPlanScreen()),
+                ).then((_) => _load()),
+              ),
+              _menuButton(
                 icon: Icons.visibility,
                 title: 'Eye Exercises',
                 subtitle: 'Guided movements — reduces strain & coordination',
@@ -133,13 +150,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   MaterialPageRoute(builder: (_) => const AboutScreen()),
                 ),
               ),
-              const Spacer(),
+              const SizedBox(height: 24),
+              // Both lines keep full textDim contrast (5.8:1): the alpha
+              // fades that used to fake "fainter" measured 3.4:1 and 2.2:1,
+              // under the 4.5:1 floor. Hierarchy comes from size, not fade.
               Center(
                 child: Text(
                   'Next break: train daily to build your streak',
                   style: TextStyle(
-                      color: VisorTheme.textDim.withValues(alpha: 0.7),
-                      fontSize: 12),
+                      color: VisorTheme.textDim, fontSize: VisorTheme.fsSmall),
                 ),
               ),
               const SizedBox(height: 6),
@@ -148,11 +167,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: Text(
                     'Version $_version',
                     style: TextStyle(
-                        color: VisorTheme.textDim.withValues(alpha: 0.5),
-                        fontSize: 11),
+                        color: VisorTheme.textDim,
+                        fontSize: VisorTheme.fsCaption),
                   ),
                 ),
             ],
+            ),
           ),
         ),
       ),
@@ -169,8 +189,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _stat('Streak', '$_streak-day', VisorTheme.accent),
-          _stat('Today', '$_today sessions', VisorTheme.text),
+          _stat('Streak', streakLabel(_streak), VisorTheme.accent),
+          _stat('Today', sessionsLabel(_today), VisorTheme.text),
           _stat('Best', _best.toStringAsFixed(0), VisorTheme.success),
         ],
       ),

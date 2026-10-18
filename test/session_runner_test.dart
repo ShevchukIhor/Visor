@@ -163,33 +163,41 @@ void main() {
     await tester.pump();
   });
 
-  testWidgets('the session remaining time counts down and recomputes on '
-      'step change', (tester) async {
+  test('sessionProgress is 0 at start, 1 at end, and clamped', () {
+    expect(sessionProgress(sessionSecondsLeft: 12, totalSeconds: 12), 0.0);
+    expect(sessionProgress(sessionSecondsLeft: 0, totalSeconds: 12), 1.0);
+    expect(sessionProgress(sessionSecondsLeft: 6, totalSeconds: 12), 0.5);
+    expect(sessionProgress(sessionSecondsLeft: -1, totalSeconds: 12), 1.0);
+    expect(sessionProgress(sessionSecondsLeft: 0, totalSeconds: 0), 0.0);
+  });
+
+  testWidgets('the session shows one big step countdown and a time-based bar',
+      (tester) async {
     final t = routine([
       ExerciseStep(type: ExerciseType.pursuit, seconds: 3),
       ExerciseStep(type: ExerciseType.saccadic, seconds: 4),
       ExerciseStep(type: ExerciseType.figure8, seconds: 5),
     ]);
     await tester.pumpWidget(MaterialApp(home: SessionRunner(template: t)));
-    await tester.pump(); // autoStart: step 1 reports its full duration
+    await tester.pump(); // autoStart: before the first tick the step shows full
 
-    // At the start the session owes every step in full: 3 + 4 + 5 = 12 s.
-    expect(find.text('0:12'), findsOneWidget);
+    // The big focal number is the current step's full duration (3 s).
+    expect(find.text('0:03'), findsOneWidget);
+    // The dim session-remaining number is gone.
+    expect(find.text('0:12'), findsNothing);
+    // The bar is time-based: nothing elapsed yet.
+    expect(tester.widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator)).value, 0.0);
 
-    // One second in: 2 left on the step, 4 + 5 on the rest — 11 s.
+    // One second in: the step owes 2 s; the bar has done 1 of 12 s.
     await tester.pump(const Duration(seconds: 1));
     await tester.pump();
-    expect(find.text('0:11'), findsOneWidget);
-
-    // Step 1 finishes: the session now owes only steps 2 and 3 — 9 s.
-    await tester.pump(const Duration(seconds: 2));
-    await tester.pump();
-    await tester.pump();
-    expect(find.textContaining('2/3 · ${ExerciseType.saccadic.title}'),
-        findsOneWidget);
-    expect(find.text('0:09'), findsOneWidget);
+    expect(find.text('0:02'), findsOneWidget);
+    expect(tester.widget<LinearProgressIndicator>(find.byType(LinearProgressIndicator)).value,
+        closeTo(1 / 12, 0.001));
 
     // Drain the remaining steps so their tickers don't outlive the test.
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pump();
     await tester.pump(const Duration(seconds: 4));
     await tester.pump();
     await tester.pump(const Duration(seconds: 5));

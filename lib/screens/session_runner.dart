@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../core/db/drill.dart';
 import '../core/db/vision_db.dart';
@@ -13,6 +14,16 @@ import '../core/training/training_step.dart';
 import 'exercises_screen.dart';
 import 'game_screen.dart';
 import '../core/models/session_setup.dart';
+
+/// Fraction of the session elapsed, from 0 (start) to 1 (done). Guards a
+/// zero-length session and clamps so a late tick can never overflow the bar.
+double sessionProgress({
+  required int sessionSecondsLeft,
+  required int totalSeconds,
+}) {
+  if (totalSeconds <= 0) return 0;
+  return (1 - sessionSecondsLeft / totalSeconds).clamp(0.0, 1.0);
+}
 
 /// Walks a routine's steps without returning to any list.
 ///
@@ -45,6 +56,16 @@ class _FailedStep {
   final Drill drill;
 }
 
+/// The per-second-changing part of the progress bar: the current step's
+/// countdown and (for a Gabor step) its score. A new instance on every tick
+/// is what tells the `ValueListenableBuilder` to rebuild the bar.
+class _StepStatus {
+  const _StepStatus({this.secondsLeft, this.correct = 0, this.total = 0});
+  final int? secondsLeft;
+  final int correct;
+  final int total;
+}
+
 class _SessionRunnerState extends State<SessionRunner> {
   /// The quit/skip controls' touch-target side. Bigger than the 40 dp
   /// default: a finger, not a stylus, taps these mid-drill.
@@ -62,9 +83,13 @@ class _SessionRunnerState extends State<SessionRunner> {
   /// what the session's bar shows in its place. Reset to nothing every time
   /// the step changes, so a new step never briefly shows the last one's
   /// numbers.
-  int? _stepSecondsLeft;
-  int _stepCorrect = 0;
-  int _stepTotal = 0;
+  ///
+  /// Held in a notifier, not plain fields: the steps tick once a second, and
+  /// routing that tick through `setState` rebuilt the whole tree — stage,
+  /// bottom bar, everything — for one digit. At 120Hz that per-second full
+  /// rebuild was the app's most expensive frame. Now only the progress bar
+  /// rebuilds.
+  final ValueNotifier<_StepStatus> _status = ValueNotifier(const _StepStatus());
 
   List<TrainingStep> get _steps => widget.template.steps;
 
@@ -77,30 +102,38 @@ class _SessionRunnerState extends State<SessionRunner> {
     // step's dispose puts the system bars back right after the incoming step
     // hid them — from the second step onward the bars just stay visible.
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    // Keep the screen on for the whole routine, owned here for the same
+    // build-before-dispose reason: a step's dispose would release the
+    // wakelock right after the next step's start re-took it. Exercise steps
+    // have no touch input at all, and a routine outlasts the device's
+    // screen timeout — a locked screen would kill a running drill mid-step.
+    WakelockPlus.enable();
   }
 
   @override
   void dispose() {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    WakelockPlus.disable();
+    _status.dispose();
     super.dispose();
   }
 
   void _next() {
+    // The notifier resets with the step: a new step must not briefly show
+    // the last one's countdown or score.
+    _status.value = const _StepStatus();
     if (_index + 1 >= _steps.length) {
       setState(() => _done = true);
     } else {
-      setState(() {
-        _index++;
-        _stepSecondsLeft = null;
-        _stepCorrect = 0;
-        _stepTotal = 0;
-      });
+      setState(() => _index++);
     }
   }
 
   void _onExerciseTick(int secondsLeft) {
     if (!mounted) return;
-    setState(() => _stepSecondsLeft = secondsLeft);
+    final s = _status.value;
+    _status.value = _StepStatus(
+        secondsLeft: secondsLeft, correct: s.correct, total: s.total);
   }
 
   /// The session's remaining time: this step's seconds left (its full
@@ -108,20 +141,21 @@ class _SessionRunnerState extends State<SessionRunner> {
   /// duration. Computed from live state, so a tick, a step change or a skip
   /// updates it automatically.
   int _sessionSecondsLeft() {
-    var left = _stepSecondsLeft ?? _steps[_index].seconds;
+    var left = _status.value.secondsLeft ?? _steps[_index].seconds;
     for (var i = _index + 1; i < _steps.length; i++) {
       left += _steps[i].seconds;
     }
     return left;
   }
 
+  /// The whole routine's duration in seconds: the denominator of the
+  /// time-based progress bar.
+  int get _totalSessionSeconds => _steps.fold(0, (s, step) => s + step.seconds);
+
   void _onGameProgress(int secondsLeft, int correct, int total) {
     if (!mounted) return;
-    setState(() {
-      _stepSecondsLeft = secondsLeft;
-      _stepCorrect = correct;
-      _stepTotal = total;
-    });
+    _status.value = _StepStatus(
+        secondsLeft: secondsLeft, correct: correct, total: total);
   }
 
   /// Records a step's write failure. Called from a step widget's
@@ -291,54 +325,54 @@ class _SessionRunnerState extends State<SessionRunner> {
 
   Widget _progressBar(TrainingStep step) {
     final total = _steps.length;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
-      child: Row(children: [
-        // Quit and skip live in [_bottomBar] — one-hand reach.
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Expanded(
-                child: Text('${_index + 1}/$total · ${step.title}',
-                    style:
-                        const TextStyle(color: VisorTheme.text, fontSize: 14)),
-              ),
-              // The current step's own top bar is hidden in session mode
-              // (see ExerciseRunner.onSecondsLeft / GameScreen.onProgress);
-              // this is where its countdown and score reappear instead.
-              if (_stepSecondsLeft != null) ...[
+    // The whole bar listens to `_status`: on the per-second tick only this
+    // subtree rebuilds — the stage (the animating exercise) and the bottom
+    // bar are untouched, so a tick costs one small relayout, not a full
+    // tree rebuild.
+    return ValueListenableBuilder<_StepStatus>(
+      valueListenable: _status,
+      builder: (ctx, s, _) => Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 0),
+        child: Row(children: [
+          // Quit and skip live in [_bottomBar] — one-hand reach.
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Expanded(
+                  child: Text('${_index + 1}/$total · ${step.title}',
+                      style:
+                          const TextStyle(color: VisorTheme.text, fontSize: 14)),
+                ),
+                // The current step's own top bar is hidden in session mode
+                // (see ExerciseRunner.onSecondsLeft / GameScreen.onProgress);
+                // this is where its countdown reappears as the one big focal
+                // number — full duration until its first tick, then live.
                 const SizedBox(width: 8),
-                Text(_mmss(_stepSecondsLeft!),
+                Text(_mmss(s.secondsLeft ?? _steps[_index].seconds),
                     style: const TextStyle(
                         color: VisorTheme.text,
-                        fontSize: 14,
+                        fontSize: 22,
                         fontWeight: FontWeight.bold)),
-              ],
-              // The session's remaining time, dim so the step's own
-              // countdown stays the focal number.
-              Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: Text(_mmss(_sessionSecondsLeft()),
-                    style: const TextStyle(
-                        color: VisorTheme.textDim, fontSize: 12)),
+                if (s.total > 0) ...[
+                  const SizedBox(width: 10),
+                  Text('✓ ${s.correct} ✗ ${s.total - s.correct}',
+                      style: const TextStyle(
+                          color: VisorTheme.text, fontSize: 13)),
+                ],
+              ]),
+              const SizedBox(height: 4),
+              LinearProgressIndicator(
+                value: sessionProgress(
+                    sessionSecondsLeft: _sessionSecondsLeft(),
+                    totalSeconds: _totalSessionSeconds),
+                backgroundColor: VisorTheme.surfaceAlt,
+                color: VisorTheme.primary,
+                minHeight: 3,
               ),
-              if (_stepTotal > 0) ...[
-                const SizedBox(width: 10),
-                Text('✓ $_stepCorrect ✗ ${_stepTotal - _stepCorrect}',
-                    style:
-                        const TextStyle(color: VisorTheme.text, fontSize: 13)),
-              ],
             ]),
-            const SizedBox(height: 4),
-            LinearProgressIndicator(
-              value: (_index + 1) / total,
-              backgroundColor: VisorTheme.surfaceAlt,
-              color: VisorTheme.primary,
-              minHeight: 3,
-            ),
-          ]),
-        ),
-      ]),
+          ),
+        ]),
+      ),
     );
   }
 

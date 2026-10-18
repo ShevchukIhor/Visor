@@ -41,6 +41,127 @@ void main() {
     await db.delete('template_steps');
     await db.delete('templates');
     await db.delete('week_plan');
+    await db.delete('meta');
+  });
+
+  testWidgets('a builtin routine offers Delete in its action sheet',
+      (tester) async {
+    await tester.runAsync(() async {
+      await TemplateRepo(await VisionDb.instance.db).seedPresets();
+      await tester.pumpWidget(const MaterialApp(home: TemplatesScreen()));
+      for (var i = 0;
+          i < 40 &&
+          find.byType(CircularProgressIndicator).evaluate().isNotEmpty;
+          i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await tester.pump();
+      }
+    });
+    await tester.longPress(find.text('Screen break'));
+    await tester.pumpAndSettle();
+    expect(find.text('Delete'), findsOneWidget);
+    expect(find.text('Duplicate'), findsOneWidget);
+  });
+
+  testWidgets('the overflow button opens the routine action sheet',
+      (tester) async {
+    // Delete/Duplicate used to live behind a long press only — a hidden
+    // gesture. The visible overflow button must open the same sheet.
+    await tester.runAsync(() async {
+      await TemplateRepo(await VisionDb.instance.db).seedPresets();
+      await tester.pumpWidget(const MaterialApp(home: TemplatesScreen()));
+      for (var i = 0;
+          i < 40 &&
+          find.byType(CircularProgressIndicator).evaluate().isNotEmpty;
+          i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await tester.pump();
+      }
+    });
+    await tester.tap(find.byIcon(Icons.more_vert).first);
+    await tester.pumpAndSettle();
+    expect(find.text('Delete'), findsOneWidget);
+    expect(find.text('Duplicate'), findsOneWidget);
+  });
+
+  testWidgets('dragging a routine reorders the list and persists it',
+      (tester) async {
+    await tester.runAsync(() async {
+      final repo = TemplateRepo(await VisionDb.instance.db);
+      await repo.save(Template(id: 0, name: 'First', builtin: false,
+          steps: [ExerciseStep(type: ExerciseType.orbs, seconds: 30)]));
+      await repo.save(Template(id: 0, name: 'Second', builtin: false,
+          steps: [ExerciseStep(type: ExerciseType.orbs, seconds: 30)]));
+      // Mark the presets as seeded so the screen's _load (which calls
+      // seedPresets) does not add the four defaults to this two-item list.
+      final db = await VisionDb.instance.db;
+      await db.insert('meta', {'key': 'presets_seeded', 'value': 1},
+          conflictAlgorithm: ConflictAlgorithm.replace);
+    });
+    await tester.runAsync(() async {
+      await tester.pumpWidget(const MaterialApp(home: TemplatesScreen()));
+      for (var i = 0;
+          i < 40 &&
+          find.byType(CircularProgressIndicator).evaluate().isNotEmpty;
+          i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await tester.pump();
+      }
+    });
+    // The list is Second (top), First. Drag the top row's handle below First.
+    // The handle starts a drag on pointer-down; move in small steps so the
+    // list tracks the drag, and overshoot the target (the editor's drag test
+    // found that landing exactly on the next item is not enough).
+    final start = tester.getCenter(find.byType(ReorderableDragStartListener).first);
+    final target = tester.getCenter(find.text('First'));
+    final end = target + (target - start);
+    final drag = await tester.startGesture(start);
+    await tester.pump();
+    for (var i = 1; i <= 8; i++) {
+      await drag.moveTo(start + (end - start) * (i / 8));
+      await tester.pump();
+    }
+    await drag.up();
+    await tester.runAsync(() async {
+      await tester.pumpAndSettle();
+      for (var i = 0;
+          i < 40 &&
+          find.byType(CircularProgressIndicator).evaluate().isNotEmpty;
+          i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await tester.pump();
+      }
+      final all = await TemplateRepo(await VisionDb.instance.db).all();
+      expect(all.map((x) => x.name), ['First', 'Second']);
+    });
+  });
+
+  testWidgets('the Generate button fills all seven days', (tester) async {
+    await tester.runAsync(() async {
+      await TemplateRepo(await VisionDb.instance.db).seedPresets();
+      await tester.pumpWidget(const MaterialApp(home: WeekPlanScreen()));
+      for (var i = 0;
+          i < 40 &&
+          find.byType(CircularProgressIndicator).evaluate().isNotEmpty;
+          i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await tester.pump();
+      }
+    });
+    expect(find.text('Generate'), findsOneWidget);
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Generate'));
+      // _generate() is async (DB write + label publish + reload) and is not
+      // awaited by the tap; poll until the plan is actually filled.
+      for (var i = 0;
+          i < 60 && find.text('Rest day').evaluate().isNotEmpty;
+          i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await tester.pump();
+      }
+    });
+    // Four presets cycle across seven days, so no day is left a rest day.
+    expect(find.text('Rest day'), findsNothing);
   });
 
   testWidgets('a routine with nothing runnable disables Start and says why',

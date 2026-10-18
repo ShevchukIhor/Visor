@@ -32,22 +32,36 @@ class TemplateRepo {
     ];
   }
 
-  /// Insert when [t.id] is 0, otherwise replace in place. Steps are always
-  /// rewritten wholesale: reordering and deletion make an incremental diff
-  /// more code than it is worth at this size.
-  Future<int> save(Template t) async {
+  /// Insert when [t.id] is 0, otherwise replace in place. A new routine goes
+  /// to the top of the list by default ([newAtTop]); [seedPresets] passes
+  /// `newAtTop: false` so the bundled presets keep their intended order.
+  /// Steps are always rewritten wholesale: reordering and deletion make an
+  /// incremental diff more code than it is worth at this size.
+  Future<int> save(Template t, {bool newAtTop = true}) async {
     return _db.transaction((txn) async {
       var id = t.id;
       if (id == 0) {
-        final maxPos = Sqflite.firstIntValue(await txn
-                .rawQuery('SELECT MAX(position) FROM templates')) ??
-            0;
-        id = await txn.insert('templates', {
-          'name': t.name,
-          'builtin': t.builtin ? 1 : 0,
-          'position': maxPos + 1,
-          'created_at': DateTime.now().millisecondsSinceEpoch,
-        });
+        if (newAtTop) {
+          // Push every existing routine down one slot so the new one takes
+          // the top of the list.
+          await txn.rawUpdate('UPDATE templates SET position = position + 1');
+          id = await txn.insert('templates', {
+            'name': t.name,
+            'builtin': t.builtin ? 1 : 0,
+            'position': 0,
+            'created_at': DateTime.now().millisecondsSinceEpoch,
+          });
+        } else {
+          final maxPos = Sqflite.firstIntValue(await txn
+                  .rawQuery('SELECT MAX(position) FROM templates')) ??
+              0;
+          id = await txn.insert('templates', {
+            'name': t.name,
+            'builtin': t.builtin ? 1 : 0,
+            'position': maxPos + 1,
+            'created_at': DateTime.now().millisecondsSinceEpoch,
+          });
+        }
       } else {
         await txn.update('templates', {'name': t.name},
             where: 'id = ?', whereArgs: [id]);
@@ -61,10 +75,21 @@ class TemplateRepo {
     });
   }
 
-  /// Builtins can be run, copied and edited, but never deleted.
+  /// Deletes a routine, builtin or not. The week-plan foreign key
+  /// (`ON DELETE SET NULL`) frees any weekday that pointed at it.
   Future<void> delete(int id) async {
-    await _db.delete('templates',
-        where: 'id = ? AND builtin = 0', whereArgs: [id]);
+    await _db.delete('templates', where: 'id = ?', whereArgs: [id]);
+  }
+
+  /// Sets each template's `position` to its index in [orderedIds], so the
+  /// list renders in that order. Used by the drag-to-reorder gesture.
+  Future<void> reorder(List<int> orderedIds) async {
+    await _db.transaction((txn) async {
+      for (var i = 0; i < orderedIds.length; i++) {
+        await txn.update('templates', {'position': i},
+            where: 'id = ?', whereArgs: [orderedIds[i]]);
+      }
+    });
   }
 
   Future<Map<int, int?>> weekPlan() async {
@@ -84,6 +109,17 @@ class TemplateRepo {
     );
   }
 
+  /// Fills all seven weekdays from the existing routines (cycling). Returns
+  /// false and changes nothing when there is no routine to draw from.
+  Future<bool> applyGeneratedWeekPlan() async {
+    final templates = await all();
+    if (templates.isEmpty) return false;
+    for (final e in generatedWeekPlan(templates).entries) {
+      await setWeekday(e.key, e.value);
+    }
+    return true;
+  }
+
   Future<Template?> forWeekday(int weekday) async {
     final id = (await weekPlan())[weekday];
     if (id == null) return null;
@@ -94,19 +130,21 @@ class TemplateRepo {
     return null;
   }
 
-  /// Ship four routines so the list is never an empty page. Idempotent: it
-  /// does nothing once any builtin template exists. Guarding on builtins
-  /// specifically (rather than any template) is safe only because [delete]
-  /// refuses to remove a builtin — otherwise deleting all four would
-  /// resurrect them on the next app start.
+  /// Ship four routines so the list is never an empty page. Runs once: the
+  /// `presets_seeded` flag in the `meta` table is set after the first seed,
+  /// so deleting the defaults later does not resurrect them on the next
+  /// launch (the old "any builtin exists" guard could not tell a fresh
+  /// install from a user who had deleted every default).
   Future<void> seedPresets() async {
-    final n = Sqflite.firstIntValue(await _db
-            .rawQuery('SELECT COUNT(*) FROM templates WHERE builtin = 1')) ??
+    final seeded = Sqflite.firstIntValue(await _db
+            .rawQuery("SELECT value FROM meta WHERE key = 'presets_seeded'")) ??
         0;
-    if (n > 0) return;
+    if (seeded == 1) return;
     for (final t in _presets) {
-      await save(t);
+      await save(t, newAtTop: false);
     }
+    await _db.insert('meta', {'key': 'presets_seeded', 'value': 1},
+        conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   static final List<Template> _presets = [
@@ -193,6 +231,18 @@ class TemplateRepo {
         throw StateError('Unknown training step kind: ${r['kind']}');
     }
   }
+}
+
+/// Assigns a routine to each of the seven weekdays, cycling through
+/// [templates] in order. An empty list yields all rest days.
+Map<int, int?> generatedWeekPlan(List<Template> templates) {
+  if (templates.isEmpty) {
+    return {for (var d = 1; d <= 7; d++) d: null};
+  }
+  return {
+    for (var d = 1; d <= 7; d++)
+      d: templates[(d - 1) % templates.length].id,
+  };
 }
 
 /// One label per ISO weekday, index 0 = Monday, null where the day has no

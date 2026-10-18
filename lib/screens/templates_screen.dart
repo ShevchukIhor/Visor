@@ -100,9 +100,9 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
     await _load();
   }
 
-  /// Builtins can be run, copied and edited, but never deleted — offer
-  /// Duplicate in their place rather than a Delete action that would only
-  /// silently fail.
+  /// Every routine can be deleted (builtins included — the `presets_seeded`
+  /// flag keeps a deleted default from coming back). A builtin additionally
+  /// offers Duplicate, so the user can keep a copy before removing it.
   void _showActionSheet(Template t) {
     showModalBottomSheet(
       context: context,
@@ -124,18 +124,17 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                   Navigator.pop(ctx);
                   _duplicate(t);
                 },
-              )
-            else
-              ListTile(
-                leading: const Icon(Icons.delete_outline,
-                    color: VisorTheme.danger),
-                title: const Text('Delete',
-                    style: TextStyle(color: VisorTheme.danger)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _confirmDelete(t);
-                },
               ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline,
+                  color: VisorTheme.danger),
+              title: const Text('Delete',
+                  style: TextStyle(color: VisorTheme.danger)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _confirmDelete(t);
+              },
+            ),
           ],
         ),
       ),
@@ -159,11 +158,15 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                   child: Text('No routines yet',
                       style: TextStyle(color: VisorTheme.textDim)),
                 )
-              : ListView.separated(
+              : ReorderableListView.builder(
                   padding: const EdgeInsets.all(16),
                   itemCount: _templates.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 10),
-                  itemBuilder: (ctx, i) => _row(_templates[i]),
+                  onReorderItem: (from, to) => _reorder(from, to),
+                  itemBuilder: (ctx, i) => Padding(
+                    key: ValueKey(_templates[i].id),
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _row(_templates[i], i),
+                  ),
                 ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => Navigator.push(
@@ -176,7 +179,19 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
     );
   }
 
-  Widget _row(Template t) {
+  /// Persists a drag-reorder: move the item from [from] to [to] in the local
+  /// list, write the new order to the database, then reload.
+  Future<void> _reorder(int from, int to) async {
+    final next = List.of(_templates);
+    next.insert(to, next.removeAt(from));
+    setState(() => _templates = next);
+    final repo = _repo;
+    if (repo == null) return;
+    await repo.reorder(next.map((t) => t.id).toList());
+    await _load();
+  }
+
+  Widget _row(Template t, int index) {
     final runnable = isRunnable(t.steps);
     final mins = (t.totalSeconds / 60).round();
     return Material(
@@ -196,6 +211,16 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(children: [
+            // Only the handle starts a drag; the rest of the row keeps its
+            // tap (start) and long-press (action sheet).
+            ReorderableDragStartListener(
+              index: index,
+              child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: Icon(Icons.drag_handle,
+                    color: VisorTheme.textDim, size: 20),
+              ),
+            ),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -203,7 +228,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                   Text(t.name,
                       style: const TextStyle(
                           color: VisorTheme.text,
-                          fontSize: 15,
+                          fontSize: 16,
                           fontWeight: FontWeight.w600)),
                   const SizedBox(height: 3),
                   Text(
@@ -227,6 +252,15 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                 MaterialPageRoute(
                     builder: (_) => TemplateEditorScreen(template: t)),
               ).then((_) => _load()),
+            ),
+            // The action sheet used to live behind a long press — a hidden
+            // gesture. The overflow button makes Delete/Duplicate visible;
+            // the long press stays as a shortcut.
+            IconButton(
+              icon: const Icon(Icons.more_vert,
+                  color: VisorTheme.textDim, size: 20),
+              tooltip: 'Routine actions',
+              onPressed: () => _showActionSheet(t),
             ),
             Icon(Icons.play_circle_outline,
                 color: runnable

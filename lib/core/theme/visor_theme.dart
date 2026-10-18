@@ -17,6 +17,21 @@ class VisorTheme {
   static const Color success = Color(0xFF3DDC84);
   static const Color danger = Color(0xFFFF5A5F);
 
+  /// Secondary text on a filled [primary] chip. 5.3:1 on [primary]; the old
+  /// #123A66 measured 4.2:1, under the 4.5:1 WCAG floor for 14px text.
+  static const Color onPrimaryDim = Color(0xFF0A2A4D);
+
+  // Type scale — the only font sizes the app uses. Off-scale values (12.5,
+  // 15) were normalised into this set so the hierarchy reads consistently.
+  static const double fsCaption = 11;
+  static const double fsSmall = 12;
+  static const double fsNote = 13;
+  static const double fsBody = 14;
+  static const double fsTitle = 16;
+  static const double fsTitleLg = 18;
+  static const double fsDisplay = 24;
+  static const double fsDisplayLg = 28;
+
   static ThemeData get theme => ThemeData(
         brightness: Brightness.dark,
         useMaterial3: true,

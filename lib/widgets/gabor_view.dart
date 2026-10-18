@@ -4,10 +4,51 @@ import 'package:flutter/material.dart';
 
 import '../core/gabor/gabor_patch.dart';
 
+/// Bounded cache of decoded Gabor images, shared by every [GaborView].
+///
+/// Two consumers make it worthwhile: a trial renders its target patch in the
+/// target slot AND in the matching grid cell (one decode, two views), and the
+/// game prewarms the next trial during the feedback delay so its grid swaps
+/// in already-decoded instead of flashing spinners.
+///
+/// Entries are owned by the cache, never by a widget: a [GaborView] that
+/// unmounts keeps its image cached for the next view of the same patch. The
+/// bound keeps a long session from accumulating gigabytes — at 96 px an entry
+/// is 36 KB, so [maxEntries] caps the cache near 3.5 MB.
+class GaborImageCache {
+  GaborImageCache._();
+
+  static const int maxEntries = 96;
+
+  /// Insertion order doubles as age order: the first key is the oldest.
+  static final Map<int, ui.Image> _images = {};
+
+  static ui.Image? lookup(int signature) => _images[signature];
+
+  static void put(int signature, ui.Image image) {
+    if (!_images.containsKey(signature) && _images.length >= maxEntries) {
+      _images.remove(_images.keys.first)?.dispose();
+    }
+    _images[signature] = image;
+  }
+
+  /// Test hook: drop every entry and its image.
+  static void clear() {
+    for (final img in _images.values) {
+      img.dispose();
+    }
+    _images.clear();
+  }
+}
+
+int gaborSignature(GaborPatch patch, int size, int background) => Object.hash(
+    patch.theta, patch.frequency, patch.phase, patch.curvature,
+    patch.contrast, size, background);
+
 /// Widget that renders a [GaborPatch] as an image.
 ///
-/// [size] is the render resolution (e.g. 128). The decoded [ui.Image] is
-/// cached per unique patch identity so the grid repaints cheaply.
+/// [size] is the render resolution (e.g. 128). Decoded [ui.Image]s live in
+/// [GaborImageCache], so a patch that several views need is decoded once.
 class GaborView extends StatefulWidget {
   final GaborPatch patch;
   final int size;
@@ -24,6 +65,26 @@ class GaborView extends StatefulWidget {
     this.background = 0xFF1A1A1D,
   });
 
+  /// Decodes [patch] into [GaborImageCache] without rendering it. The game
+  /// calls this for the whole next trial during the 650 ms feedback delay,
+  /// so the grid swap lands on cached images.
+  static void prewarm(
+    GaborPatch patch, {
+    int size = 128,
+    int background = 0xFF1A1A1D,
+  }) {
+    final sig = gaborSignature(patch, size, background);
+    if (GaborImageCache.lookup(sig) != null) return;
+    final rgba = patch.renderRgba(size, darkLevel: background);
+    ui.decodeImageFromPixels(
+      rgba,
+      size,
+      size,
+      ui.PixelFormat.rgba8888,
+      (img) => GaborImageCache.put(sig, img),
+    );
+  }
+
   @override
   State<GaborView> createState() => _GaborViewState();
 }
@@ -33,16 +94,15 @@ class _GaborViewState extends State<GaborView> {
   int _lastSignature = -1;
 
   void _load() {
-    final sig = Object.hash(
-        widget.patch.theta,
-        widget.patch.frequency,
-        widget.patch.phase,
-        widget.patch.curvature,
-        widget.patch.contrast,
-        widget.size,
-        widget.background);
+    final sig =
+        gaborSignature(widget.patch, widget.size, widget.background);
     if (_image != null && _lastSignature == sig) return;
     _lastSignature = sig;
+    final cached = GaborImageCache.lookup(sig);
+    if (cached != null) {
+      _image = cached;
+      return;
+    }
     final rgba =
         widget.patch.renderRgba(widget.size, darkLevel: widget.background);
     ui.decodeImageFromPixels(
@@ -51,10 +111,9 @@ class _GaborViewState extends State<GaborView> {
       widget.size,
       ui.PixelFormat.rgba8888,
       (img) {
-        if (!mounted) return;
-        final old = _image;
+        GaborImageCache.put(sig, img);
+        if (!mounted || _lastSignature != sig) return;
         _image = img;
-        old?.dispose();
         setState(() {});
       },
     );
@@ -78,7 +137,7 @@ class _GaborViewState extends State<GaborView> {
 
   @override
   void dispose() {
-    _image?.dispose();
+    // The image belongs to GaborImageCache, which owns its lifetime.
     super.dispose();
   }
 
