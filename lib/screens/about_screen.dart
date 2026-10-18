@@ -97,7 +97,7 @@ class _AboutScreenState extends State<AboutScreen> {
                 "to study vision. Regular short sessions can ease screen "
                 "fatigue, sharpen focus, and loosen eye strain from long "
                 "near-work.",
-                size: 15,
+                size: 14,
               ),
               _para(
                 "Each card differs by a single controlled parameter — "

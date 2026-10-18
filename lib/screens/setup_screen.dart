@@ -48,7 +48,10 @@ class _SetupScreenState extends State<SetupScreen> {
               const Text(
                 'Tip: for best results set brightness so the bright and dark '
                 'stripes are clearly distinct \u2014 no higher than comfortable.',
-                style: TextStyle(color: VisorTheme.textDim, fontSize: 12.5, height: 1.4),
+                style: TextStyle(
+                    color: VisorTheme.textDim,
+                    fontSize: 13,
+                    height: 1.4),
               ),
               const Spacer(),
               SizedBox(
@@ -137,8 +140,11 @@ class _SetupScreenState extends State<SetupScreen> {
               Text(
                 '${d.grid}×${d.grid} grid',
                 style: TextStyle(
-                  color: active ? const Color(0xFF123A66) : VisorTheme.textDim,
-                  fontSize: 14,
+                  // onPrimaryDim: 5.3:1 on the filled chip; the old
+                  // #123A66 measured 4.2:1, under the 4.5:1 floor.
+                  color:
+                      active ? VisorTheme.onPrimaryDim : VisorTheme.textDim,
+                  fontSize: VisorTheme.fsBody,
                 ),
               ),
             ],
@@ -149,17 +155,31 @@ class _SetupScreenState extends State<SetupScreen> {
   }
 
   Widget _stripeSwitch() {
+    // The switch alone does not say which mode is active — the labels do:
+    // the active one stays bright and bold, the other dims.
     return Row(
       children: [
-        const Text('Straight',
-            style: TextStyle(color: VisorTheme.text, fontSize: 15)),
+        Text(
+          'Straight',
+          style: TextStyle(
+            color: _curved ? VisorTheme.textDim : VisorTheme.text,
+            fontSize: VisorTheme.fsBody,
+            fontWeight: _curved ? FontWeight.normal : FontWeight.w600,
+          ),
+        ),
         Switch(
           value: _curved,
           activeThumbColor: VisorTheme.primary,
           onChanged: (v) => setState(() => _curved = v),
         ),
-        const Text('Curved',
-            style: TextStyle(color: VisorTheme.text, fontSize: 15)),
+        Text(
+          'Curved',
+          style: TextStyle(
+            color: _curved ? VisorTheme.text : VisorTheme.textDim,
+            fontSize: VisorTheme.fsBody,
+            fontWeight: _curved ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
       ],
     );
   }

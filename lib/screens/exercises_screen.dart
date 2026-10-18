@@ -93,7 +93,7 @@ class ExercisesScreen extends StatelessWidget {
                           Text(e.title,
                               style: const TextStyle(
                                   color: VisorTheme.text,
-                                  fontSize: 15,
+                                  fontSize: 16,
                                   fontWeight: FontWeight.w600)),
                           const SizedBox(height: 3),
                           Text(e.subtitle,
@@ -179,6 +179,12 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
   // Chosen duration (before start) and remaining time (during run).
   int _duration = 60;
   int _secondsLeft = 60;
+
+  /// Remaining seconds mirrored to the countdown pill. The per-second tick
+  /// updates only this notifier, not `setState`: a full tree rebuild once a
+  /// second was the app's most expensive frame at 120Hz.
+  final ValueNotifier<int> _secondsLeftNotifier = ValueNotifier<int>(60);
+
   bool _running = false;
   bool _finished = false;
   Timer? _ticker;
@@ -299,6 +305,7 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
   void dispose() {
     _ticker?.cancel();
     _ctrl.dispose();
+    _secondsLeftNotifier.dispose();
     for (final img in _gaborImages) {
       img.dispose();
     }
@@ -314,6 +321,7 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
       _finished = false;
       _secondsLeft = _duration;
     });
+    _secondsLeftNotifier.value = _secondsLeft;
     widget.onSecondsLeft?.call(_secondsLeft);
     _startedAt = DateTime.now();
     // The animation only needs to run while the drill does; repeating it
@@ -326,7 +334,10 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
     _ticker = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) return;
       final done = _secondsLeft <= 1;
-      setState(() => _secondsLeft = done ? 0 : _secondsLeft - 1);
+      // No `setState` here: the countdown pill listens to the notifier, so
+      // the tick rebuilds one pill, not the whole tree.
+      _secondsLeft = done ? 0 : _secondsLeft - 1;
+      _secondsLeftNotifier.value = _secondsLeft;
       widget.onSecondsLeft?.call(_secondsLeft);
       if (done) _finish();
     });
@@ -395,9 +406,35 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
     }
   }
 
-  /// Exit immediately — works at any point, including mid-exercise. Must
-  /// never call [_record]: an exercise closed early is not training.
-  void _exit() {
+  /// Exit — works at any point, including mid-exercise. Must never call
+  /// [_record]: an exercise closed early is not training. A running
+  /// exercise confirms first, so an accidental tap (or the back gesture)
+  /// does not burn a started drill; the pre-start picker exits freely.
+  Future<void> _exit() async {
+    if (_running) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: VisorTheme.surface,
+          title: const Text('Exit exercise?',
+              style: TextStyle(color: VisorTheme.text)),
+          content: Text('Your progress will not be saved.',
+              style: const TextStyle(color: VisorTheme.textDim)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Exit',
+                  style: TextStyle(color: VisorTheme.danger)),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+    }
     _ticker?.cancel();
     _ctrl.stop();
     Navigator.pop(context);
@@ -411,7 +448,7 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    final scaffold = Scaffold(
       backgroundColor: VisorTheme.bg,
       body: Stack(
         children: [
@@ -460,6 +497,15 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
         ],
       ),
     );
+    // In routine mode the SessionRunner owns exit, so the system back
+    // gesture must pop the whole routine, not confirm a single step.
+    if (widget.onDone != null) return scaffold;
+    return PopScope(
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) _exit();
+      },
+      child: scaffold,
+    );
   }
 
   Widget _topBar() {
@@ -485,15 +531,20 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
           ),
           const Spacer(),
           if (_running)
-            _glassPill(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              child: Text(
-                _mmss(_secondsLeft),
-                style: const TextStyle(
-                  color: VisorTheme.text,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
+            // Only this pill rebuilds on the per-second tick (see
+            // `_secondsLeftNotifier`); the rest of the tree is untouched.
+            ValueListenableBuilder<int>(
+              valueListenable: _secondsLeftNotifier,
+              builder: (ctx, s, _) => _glassPill(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                child: Text(
+                  _mmss(s),
+                  style: const TextStyle(
+                    color: VisorTheme.text,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),
@@ -528,41 +579,34 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
   }
 
   /// Frosted-glass container used for all floating UI chrome.
+  ///
+  /// "Frosted" is a solid fill, not a live blur: the animated content
+  /// (sphere + halo, at most ~640px around the centre) never passes behind
+  /// these pills, so a `BackdropFilter` here re-blurred a flat background
+  /// 121×/s for zero visible difference — the blur of a flat colour is the
+  /// flat colour. A solid fill looks identical and costs the GPU nothing.
   Widget _glassPill({required EdgeInsets padding, required Widget child}) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          padding: padding,
-          decoration: BoxDecoration(
-            color: VisorTheme.surface.withValues(alpha: 0.7),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: child,
-        ),
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: VisorTheme.surface.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(12),
       ),
+      child: child,
     );
   }
 
-  /// Frosted-glass card for center overlays.
+  /// Frosted-glass card for center overlays (picker, finish card).
+  /// Solid fill for the same reason as [_glassPill] — see there.
   Widget _glassCard({required Widget child}) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 24),
-      child: ClipRRect(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: VisorTheme.surface.withValues(alpha: 0.85),
         borderRadius: BorderRadius.circular(18),
-        child: BackdropFilter(
-          filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-          child: Container(
-            padding: const EdgeInsets.all(22),
-            decoration: BoxDecoration(
-              color: VisorTheme.surface.withValues(alpha: 0.85),
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: child,
-          ),
-        ),
       ),
+      child: child,
     );
   }
 

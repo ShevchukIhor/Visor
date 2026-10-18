@@ -186,12 +186,9 @@ class ExercisePainter extends CustomPainter {
 
     // Default: smooth moving dot with a faint guidance ring in the center.
     _dot(canvas, center, size.width * 0.03, color);
-    final ref = Paint()
-      ..color = color.withValues(alpha: 0.1)
-      ..strokeWidth = 1
-      ..style = PaintingStyle.stroke;
+    _refPaint.color = color.withValues(alpha: 0.1);
     canvas.drawCircle(
-        Offset(size.width / 2, size.height / 2), size.width * 0.005, ref);
+        Offset(size.width / 2, size.height / 2), size.width * 0.005, _refPaint);
   }
 
   /// Accommodation drill: the target is small and sharp when "far" and
@@ -206,24 +203,19 @@ class ExercisePainter extends CustomPainter {
     final r = minR + (maxR - minR) * n;
 
     // Soft halo that blooms as the target comes "near".
-    final halo = Paint()
-      ..color = color.withValues(alpha: 0.10 + 0.18 * n)
-      ..maskFilter = MaskFilter.blur(BlurStyle.normal, 12 + 36 * n);
-    canvas.drawCircle(Offset(cx, cy), r * 1.5, halo);
+    _glow(canvas, Offset(cx, cy), r * 1.5, 12 + 36 * n,
+        color.withValues(alpha: 0.10 + 0.18 * n));
 
     final img = nearFarGabor ? gaborImage : null;
     if (img != null) {
       // Gabor sphere: scales from small (far) to large (near), softening
       // slightly at the near end so the eye feels the defocus.
-      final rect = Rect.fromCircle(center: Offset(cx, cy), radius: r);
-      final paint = Paint()
-        ..filterQuality = FilterQuality.high
-        ..color = Colors.white.withValues(alpha: 0.95 - 0.25 * n);
+      _gaborPaint.color = Colors.white.withValues(alpha: 0.95 - 0.25 * n);
       canvas.drawImageRect(
         img,
-        Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble()),
-        rect,
-        paint,
+        _srcRect(img),
+        Rect.fromCircle(center: Offset(cx, cy), radius: r),
+        _gaborPaint,
       );
     } else {
       // Main disc: crisp when far, softer when near.
@@ -284,10 +276,7 @@ class ExercisePainter extends CustomPainter {
 
       final img = gaborImage;
       if (img != null) {
-        final rect = Rect.fromCircle(center: pos, radius: r);
-        final paint = Paint()
-          ..filterQuality = FilterQuality.high
-          ..color = Colors.white.withValues(alpha: 0.95 * alpha);
+        _gaborPaint.color = Colors.white.withValues(alpha: 0.95 * alpha);
         canvas.save();
         // Slow gentle rotation while drifting.
         canvas.translate(pos.dx, pos.dy);
@@ -295,41 +284,112 @@ class ExercisePainter extends CustomPainter {
         canvas.translate(-pos.dx, -pos.dy);
         canvas.drawImageRect(
           img,
-          Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble()),
-          rect,
-          paint,
+          _srcRect(img),
+          Rect.fromCircle(center: pos, radius: r),
+          _gaborPaint,
         );
         canvas.restore();
       } else {
         // Fallback soft orb until the Gabor image has decoded.
-        final halo = Paint()
-          ..color = color.withValues(alpha: 0.15 * alpha)
-          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18);
-        canvas.drawCircle(pos, r * 1.6, halo);
+        _glow(canvas, pos, r * 1.6, 18, color.withValues(alpha: 0.15 * alpha));
         _dot(canvas, pos, r, color.withValues(alpha: 0.85 * alpha));
       }
     }
   }
 
+  /// Paints reused every frame. `paint` runs once per frame on the UI
+  /// thread, so a static Paint costs nothing and spares the GC one object
+  /// per frame per call — at 121 frames/s those add up to a scavenger run
+  /// every few seconds, and each run is one dropped frame.
+  static final Paint _glowPaint = Paint();
+  static final Paint _dotPaint = Paint();
+  static final Paint _refPaint = Paint()
+    ..strokeWidth = 1
+    ..style = PaintingStyle.stroke;
+  static final Paint _gaborPaint = Paint()..filterQuality = FilterQuality.high;
+
+  /// Gradient stop storage, mutated in place each frame: `Gradient.radial`
+  /// copies both lists synchronously, so sharing them across frames is safe
+  /// and spares two list allocations per frame.
+  static final List<Color> _glowColors =
+      [const Color(0x00000000), const Color(0x00000000), const Color(0x00000000)];
+  static final List<double> _glowStops = [0, 0, 0];
+
+  /// Source rects for Gabor images, cached by dimension (they never change
+  /// once decoded).
+  static final Map<String, Rect> _srcRects = {};
+
+  /// Laid-out label paragraphs, cached by (text, color, width). The label
+  /// only ever switches between FAR and NEAR, so laying it out once per pair
+  /// keeps the 120Hz paint path free of text layout — the most expensive
+  /// CPU op this painter used to do every frame.
+  static final Map<String, ui.Paragraph> _labelCache = {};
+
+  ui.Paragraph _labelParagraph(String text, Color color, double width) {
+    final key = '$text|${color.toARGB32()}|${width.round()}';
+    final cached = _labelCache[key];
+    if (cached != null) return cached;
+    final builder = ui.ParagraphBuilder(
+      ui.ParagraphStyle(textDirection: ui.TextDirection.ltr),
+    )
+      ..pushStyle(ui.TextStyle(
+        color: color,
+        fontSize: 16,
+        letterSpacing: 4,
+        fontWeight: ui.FontWeight.w600,
+      ))
+      ..addText(text);
+    final paragraph = builder.build()
+      ..layout(const ui.ParagraphConstraints(width: double.infinity));
+    if (_labelCache.length >= 8) {
+      // Bound the cache: the app uses two entries, tests a few more.
+      _labelCache.remove(_labelCache.keys.first)?.dispose();
+    }
+    _labelCache[key] = paragraph;
+    return paragraph;
+  }
+
   void _label(Canvas canvas, Size size, String text, Color color) {
-    final tp = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: TextStyle(
-          color: color,
-          fontSize: 15,
-          letterSpacing: 4,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    tp.paint(canvas, Offset((size.width - tp.width) / 2, size.height * 0.10));
+    final p = _labelParagraph(text, color, size.width);
+    canvas.drawParagraph(
+      p,
+      Offset((size.width - p.longestLine) / 2, size.height * 0.10),
+    );
+  }
+
+  /// Soft glow as a radial-gradient disc: the same look as a
+  /// Gaussian-blurred circle, but a single-pass GPU shader instead of a
+  /// per-frame multi-pass blur over a disc that is up to two-thirds of the
+  /// screen wide. [r] is the core radius and [sigma] the blur radius the
+  /// old `MaskFilter.blur` used, so the falloff matches: the edge spreads
+  /// over roughly ±2σ.
+  void _glow(
+      Canvas canvas, Offset center, double r, double sigma, Color color) {
+    final outer = r + 2 * sigma;
+    _glowColors[0] = color;
+    _glowColors[1] = color.withValues(alpha: color.a * 0.5);
+    _glowColors[2] = color.withValues(alpha: 0);
+    _glowStops[0] = math.max(0.0, (r - 2 * sigma) / outer);
+    _glowStops[1] = r / outer;
+    _glowStops[2] = 1.0;
+    _glowPaint.shader = ui.Gradient.radial(center, outer, _glowColors, _glowStops);
+    canvas.drawCircle(center, outer, _glowPaint);
+  }
+
+  /// The full-bleed source rect of a decoded Gabor image, cached by
+  /// dimension.
+  Rect _srcRect(ui.Image img) {
+    final key = '${img.width}x${img.height}';
+    final cached = _srcRects[key];
+    if (cached != null) return cached;
+    final rect = Rect.fromLTWH(0, 0, img.width.toDouble(), img.height.toDouble());
+    _srcRects[key] = rect;
+    return rect;
   }
 
   void _dot(Canvas canvas, Offset pos, double r, Color c) {
-    final p = Paint()..color = c;
-    canvas.drawCircle(pos, r, p);
+    _dotPaint.color = c;
+    canvas.drawCircle(pos, r, _dotPaint);
   }
 
   @override

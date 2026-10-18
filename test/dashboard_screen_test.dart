@@ -16,6 +16,34 @@ void main() {
     if (f.existsSync()) f.deleteSync();
   });
 
+  test('streakLabel and sessionsLabel pluralise', () {
+    // "0-day" / "1 sessions" read as broken English; the labels must not.
+    expect(streakLabel(0), '0 days');
+    expect(streakLabel(1), '1 day');
+    expect(streakLabel(5), '5 days');
+    expect(sessionsLabel(0), '0 sessions');
+    expect(sessionsLabel(1), '1 session');
+    expect(sessionsLabel(3), '3 sessions');
+  });
+
+  testWidgets('the dashboard renders pluralised stats', (tester) async {
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.runAsync(() async {
+      await tester.pumpWidget(const MaterialApp(home: DashboardScreen()));
+      // The stats load from the database; poll until they have.
+      for (var i = 0;
+          i < 40 && find.text('0 days').evaluate().isEmpty;
+          i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await tester.pump();
+      }
+    });
+    expect(find.text('0 days'), findsOneWidget);
+    expect(find.text('0 sessions'), findsOneWidget);
+  });
+
   testWidgets('the dashboard offers a Weekly plan entry that opens the plan',
       (tester) async {
     // The dashboard's menu column is tall; the default 800x600 test surface

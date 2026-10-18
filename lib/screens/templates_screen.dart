@@ -228,7 +228,7 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                   Text(t.name,
                       style: const TextStyle(
                           color: VisorTheme.text,
-                          fontSize: 15,
+                          fontSize: 16,
                           fontWeight: FontWeight.w600)),
                   const SizedBox(height: 3),
                   Text(
@@ -252,6 +252,15 @@ class _TemplatesScreenState extends State<TemplatesScreen> {
                 MaterialPageRoute(
                     builder: (_) => TemplateEditorScreen(template: t)),
               ).then((_) => _load()),
+            ),
+            // The action sheet used to live behind a long press — a hidden
+            // gesture. The overflow button makes Delete/Duplicate visible;
+            // the long press stays as a shortcut.
+            IconButton(
+              icon: const Icon(Icons.more_vert,
+                  color: VisorTheme.textDim, size: 20),
+              tooltip: 'Routine actions',
+              onPressed: () => _showActionSheet(t),
             ),
             Icon(Icons.play_circle_outline,
                 color: runnable

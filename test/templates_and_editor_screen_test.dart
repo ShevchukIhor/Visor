@@ -63,6 +63,27 @@ void main() {
     expect(find.text('Duplicate'), findsOneWidget);
   });
 
+  testWidgets('the overflow button opens the routine action sheet',
+      (tester) async {
+    // Delete/Duplicate used to live behind a long press only — a hidden
+    // gesture. The visible overflow button must open the same sheet.
+    await tester.runAsync(() async {
+      await TemplateRepo(await VisionDb.instance.db).seedPresets();
+      await tester.pumpWidget(const MaterialApp(home: TemplatesScreen()));
+      for (var i = 0;
+          i < 40 &&
+          find.byType(CircularProgressIndicator).evaluate().isNotEmpty;
+          i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await tester.pump();
+      }
+    });
+    await tester.tap(find.byIcon(Icons.more_vert).first);
+    await tester.pumpAndSettle();
+    expect(find.text('Delete'), findsOneWidget);
+    expect(find.text('Duplicate'), findsOneWidget);
+  });
+
   testWidgets('dragging a routine reorders the list and persists it',
       (tester) async {
     await tester.runAsync(() async {

@@ -55,6 +55,10 @@ class _GameScreenState extends State<GameScreen>
   late final TrialGenerator _gen;
   late GaborTrial _trial;
   late int _secondsLeft;
+
+  /// Fades and settles the result card in. The mixin's vsync was already
+  /// reserved for this; the game itself runs on a Timer, not an animation.
+  late final AnimationController _reveal;
   int _correct = 0;
   int _total = 0;
   int? _selected; // tapped index (null until answered)
@@ -80,6 +84,10 @@ class _GameScreenState extends State<GameScreen>
     }
     _gen = TrialGenerator(curved: widget.setup.curved);
     _trial = _gen.generate(widget.setup.difficulty);
+    _reveal = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
     _secondsLeft = widget.setup.durationS;
     _startedAt = DateTime.now();
     // Defer the initial progress report to after the first frame, so the
@@ -107,6 +115,7 @@ class _GameScreenState extends State<GameScreen>
   void _finish() {
     _timer?.cancel();
     setState(() => _finished = true);
+    _reveal.forward(from: 0);
     _save();
     final onDone = widget.onDone;
     if (onDone != null) {
@@ -161,29 +170,82 @@ class _GameScreenState extends State<GameScreen>
 
   void _tap(int index) {
     if (_answered || _finished) return;
+    final correct = index == _trial.answerIndex;
     setState(() {
       _answered = true;
       _selected = index;
       _total++;
-      if (index == _trial.answerIndex) {
+      if (correct) {
         _correct++;
       }
     });
+    // The game is a rapid-tap drill: the thumb needs the answer the instant
+    // the finger lifts, and the two strengths keep correct/wrong distinct
+    // without sound.
+    if (correct) {
+      HapticFeedback.lightImpact();
+    } else {
+      HapticFeedback.mediumImpact();
+    }
     _reportProgress();
+    // Generate the next trial now and prewarm its images during the feedback
+    // delay, so the grid swap lands on decoded patches instead of flashing
+    // up to 36 spinners.
+    final next = _gen.generate(widget.setup.difficulty);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _finished) return;
+      GaborView.prewarm(next.target, size: 128);
+      for (final patch in next.distractors) {
+        GaborView.prewarm(patch, size: 96);
+      }
+    });
     // Show result briefly, then advance.
     Future.delayed(const Duration(milliseconds: 650), () {
       if (!mounted || _finished) return;
       setState(() {
-        _trial = _gen.generate(widget.setup.difficulty);
+        _trial = next;
         _answered = false;
         _selected = null;
       });
     });
   }
 
+  /// Exit guard: a session with answered trials has earned nothing yet —
+  /// `_save` only runs on natural completion — so confirm before throwing it
+  /// away. A fresh session (no taps) just goes back.
+  Future<void> _confirmExit() async {
+    if (_total == 0) {
+      Navigator.pop(context);
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: VisorTheme.surface,
+        title: const Text('End session?',
+            style: TextStyle(color: VisorTheme.text)),
+        content: Text('Your progress will not be saved.',
+            style: const TextStyle(color: VisorTheme.textDim)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('End',
+                style: TextStyle(color: VisorTheme.danger)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) Navigator.pop(context);
+  }
+
   @override
   void dispose() {
     _timer?.cancel();
+    _reveal.dispose();
     if (widget.onDone == null) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     }
@@ -192,11 +254,20 @@ class _GameScreenState extends State<GameScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    // In routine mode the SessionRunner owns exit (its bottom bar), so the
+    // system back gesture must pop the whole routine, not confirm a step.
+    final scaffold = Scaffold(
       backgroundColor: VisorTheme.bg,
       body: SafeArea(
         child: _finished ? _resultView() : _gameView(),
       ),
+    );
+    if (widget.onDone != null) return scaffold;
+    return PopScope(
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) _confirmExit();
+      },
+      child: scaffold,
     );
   }
 
@@ -224,9 +295,15 @@ class _GameScreenState extends State<GameScreen>
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
       child: Row(
         children: [
-          GestureDetector(
-            onTap: () => Navigator.pop(context),
-            child: const Icon(Icons.close, color: VisorTheme.textDim),
+          IconButton(
+            icon: const Icon(Icons.close, color: VisorTheme.textDim),
+            tooltip: 'End session',
+            onPressed: _confirmExit,
+            // The old bare GestureDetector gave a 24 dp target; a finger
+            // exits mid-drill, so it gets the same 48 dp floor as the
+            // SessionRunner's quit/skip controls.
+            constraints: const BoxConstraints(
+                minWidth: 48, minHeight: 48),
           ),
           const SizedBox(width: 12),
           Text(
@@ -261,7 +338,7 @@ class _GameScreenState extends State<GameScreen>
       children: [
         const Text(
           'Find the matching patch',
-          style: TextStyle(color: VisorTheme.textDim, fontSize: 15),
+          style: TextStyle(color: VisorTheme.textDim, fontSize: 14),
         ),
         const SizedBox(height: 10),
         // Target patch
@@ -290,8 +367,10 @@ class _GameScreenState extends State<GameScreen>
         physics: const NeverScrollableScrollPhysics(),
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: n,
-          mainAxisSpacing: 6,
-          crossAxisSpacing: 6,
+          // 8 dp keeps a fast tap from landing on a neighbour's edge — the
+          // old 6 dp gap was under the minimum touch spacing.
+          mainAxisSpacing: 8,
+          crossAxisSpacing: 8,
         ),
         itemCount: n * n,
         itemBuilder: (ctx, i) {
@@ -323,59 +402,69 @@ class _GameScreenState extends State<GameScreen>
 
   Widget _resultView() {
     final acc = _total == 0 ? 0 : _correct / _total;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Session complete',
-                style: TextStyle(color: VisorTheme.text, fontSize: 24)),
-            const SizedBox(height: 16),
-            Text(
-              '$_correct / $_total',
-              style: const TextStyle(
-                color: VisorTheme.primary,
-                fontSize: 48,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'accuracy ${(acc * 100).round()}%',
-              style:
-                  const TextStyle(color: VisorTheme.textDim, fontSize: 16),
-            ),
-            if (_saveError) ...[
-              const SizedBox(height: 16),
-              const Text(
-                'Could not save this session — your streak and history may '
-                'not include it.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: VisorTheme.danger, fontSize: 13),
-              ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () {
-                  setState(() => _saveError = false);
-                  _save();
-                },
-                child: const Text('Retry save'),
-              ),
-            ],
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: VisorTheme.primary,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+    // A short settle-in marks the transition from drill to result; the
+    // game's own motion stays instant, this is the one place it eases.
+    return FadeTransition(
+      opacity: CurvedAnimation(parent: _reveal, curve: Curves.easeOut),
+      child: ScaleTransition(
+        scale: Tween<double>(begin: 0.96, end: 1.0).animate(
+          CurvedAnimation(parent: _reveal, curve: Curves.easeOut),
+        ),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Session complete',
+                    style: TextStyle(color: VisorTheme.text, fontSize: 24)),
+                const SizedBox(height: 16),
+                Text(
+                  '$_correct / $_total',
+                  style: const TextStyle(
+                    color: VisorTheme.primary,
+                    fontSize: 48,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Done'),
-              ),
+                const SizedBox(height: 4),
+                Text(
+                  'accuracy ${(acc * 100).round()}%',
+                  style: const TextStyle(
+                      color: VisorTheme.textDim, fontSize: 16),
+                ),
+                if (_saveError) ...[
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Could not save this session — your streak and history '
+                    'may not include it.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: VisorTheme.danger, fontSize: 13),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: () {
+                      setState(() => _saveError = false);
+                      _save();
+                    },
+                    child: const Text('Retry save'),
+                  ),
+                ],
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: VisorTheme.primary,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                    ),
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Done'),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
