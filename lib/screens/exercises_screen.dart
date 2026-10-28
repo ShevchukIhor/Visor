@@ -30,14 +30,17 @@ extension ExerciseIcon on ExerciseType {
   /// One-line guidance shown while the exercise runs.
   String get hint => switch (this) {
         ExerciseType.convergence =>
-          'Follow the dot toward the centre and back',
+          'Vertical pursuit — keep your head still, follow with eyes only',
         ExerciseType.nearFar =>
-          'Shift focus: small sharp dot is FAR, large soft disc is NEAR',
+          'Pacing: dot grows/shrinks — do not change viewing distance',
         ExerciseType.focusShift =>
-          'Jump your gaze between the far-apart targets',
-        ExerciseType.saccadic => 'Flick your eyes to each new position',
-        ExerciseType.pursuit => 'Keep the dot locked in your gaze as it glides',
-        ExerciseType.figure8 => 'Trace the loop smoothly with your eyes',
+          'Large saccades — keep your head still, jump with eyes only',
+        ExerciseType.saccadic =>
+          'Flick your eyes to each new position — keep head still',
+        ExerciseType.pursuit =>
+          'Keep the dot locked in your gaze — keep head still',
+        ExerciseType.figure8 =>
+          'Trace the loop smoothly — keep head still',
         ExerciseType.peripheral =>
           'Fixate on the centre dot; catch the flashes at the edges',
         ExerciseType.orbs =>
@@ -278,6 +281,10 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
     if (_gaborRequested) return;
     _gaborRequested = true;
     final rng = math.Random(); // a fresh variety of patches per launch
+    
+    // Higher resolution for better image quality on high-DPI screens
+    final size = 256;
+    
     for (var k = 0; k < count; k++) {
       final patch = GaborPatch(
         theta: rng.nextDouble() * math.pi,
@@ -285,11 +292,11 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
         sigma: 0.45 + rng.nextDouble() * 0.2,
         phase: rng.nextDouble() * 2 * math.pi,
       );
-      final rgba = renderRgbaCircular(patch, 192);
+      final rgba = renderRgbaCircular(patch, size);
       ui.decodeImageFromPixels(
         rgba,
-        192,
-        192,
+        size,
+        size,
         ui.PixelFormat.rgba8888,
         (img) {
           if (!mounted) {
@@ -476,6 +483,12 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
                   orbsTime: _clock.elapsedMilliseconds / 1000.0,
                   gaborImage: _gaborImage,
                   nearFarGabor: _nearFarGabor,
+                  // Ghost trail creates a second faint target that invites
+                  // corrective saccades — disable for true saccade tasks.
+                  trailLength: (widget.type == ExerciseType.saccadic ||
+                          widget.type == ExerciseType.focusShift)
+                      ? 0
+                      : 8,
                 ),
               ),
             ),

@@ -52,7 +52,7 @@ class GameScreen extends StatefulWidget {
 }
 
 class _GameScreenState extends State<GameScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final TrialGenerator _gen;
   late GaborTrial _trial;
   late int _secondsLeft;
@@ -60,6 +60,9 @@ class _GameScreenState extends State<GameScreen>
   /// Fades and settles the result card in. The mixin's vsync was already
   /// reserved for this; the game itself runs on a Timer, not an animation.
   late final AnimationController _reveal;
+
+  /// Animates trial transitions: new patches scale in and fade in.
+  late final AnimationController _trialAnim;
   int _correct = 0;
   int _total = 0;
   int? _selected; // tapped index (null until answered)
@@ -93,6 +96,10 @@ class _GameScreenState extends State<GameScreen>
     _reveal = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 350),
+    );
+    _trialAnim = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 180),
     );
     _secondsLeft = widget.setup.durationS;
     _startedAt = DateTime.now();
@@ -208,7 +215,7 @@ class _GameScreenState extends State<GameScreen>
         GaborView.prewarm(patch, size: 96);
       }
     });
-    // Show result briefly, then advance.
+    // Show result briefly, then advance with animation.
     Future.delayed(const Duration(milliseconds: 650), () {
       if (!mounted || _finished) return;
       setState(() {
@@ -216,6 +223,8 @@ class _GameScreenState extends State<GameScreen>
         _answered = false;
         _selected = null;
       });
+      // Animate the new trial into view.
+      _trialAnim.forward(from: 0);
     });
   }
 
@@ -255,6 +264,7 @@ class _GameScreenState extends State<GameScreen>
   void dispose() {
     _timer?.cancel();
     _reveal.dispose();
+    _trialAnim.dispose();
     if (widget.onDone == null) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       // Safety net for the exit path: `_finish` already released the
@@ -347,27 +357,46 @@ class _GameScreenState extends State<GameScreen>
   }
 
   Widget _targetAndGrid() {
-    return Column(
-      children: [
-        const Text(
-          'Find the matching patch',
-          style: TextStyle(color: VisorTheme.textDim, fontSize: 14),
-        ),
-        const SizedBox(height: 10),
-        // Target patch
-        Container(
-          width: 110,
-          height: 110,
-          decoration: BoxDecoration(
-            border: Border.all(color: VisorTheme.primary, width: 2),
-            borderRadius: BorderRadius.circular(10),
+    final scaleAnim = Tween<double>(begin: 0.96, end: 1.0).animate(
+      CurvedAnimation(parent: _trialAnim, curve: Curves.easeOut),
+    );
+    final fadeAnim = Tween<double>(begin: 0.85, end: 1.0).animate(
+      CurvedAnimation(parent: _trialAnim, curve: Curves.easeOut),
+    );
+
+    return AnimatedBuilder(
+      animation: _trialAnim,
+      builder: (ctx, child) {
+        return Transform.scale(
+          scale: scaleAnim.value,
+          child: Opacity(
+            opacity: fadeAnim.value,
+            child: child,
           ),
-          clipBehavior: Clip.antiAlias,
-          child: GaborView(patch: _trial.target, size: 128),
-        ),
-        const SizedBox(height: 16),
-        Expanded(child: _gridView()),
-      ],
+        );
+      },
+      child: Column(
+        children: [
+          const Text(
+            'Find the matching patch',
+            style: TextStyle(color: VisorTheme.textDim, fontSize: 14),
+          ),
+          const SizedBox(height: 10),
+          // Target patch
+          Container(
+            width: 110,
+            height: 110,
+            decoration: BoxDecoration(
+              border: Border.all(color: VisorTheme.primary, width: 2),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: GaborView(patch: _trial.target, size: 128),
+          ),
+          const SizedBox(height: 16),
+          Expanded(child: _gridView()),
+        ],
+      ),
     );
   }
 

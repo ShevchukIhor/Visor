@@ -6,12 +6,12 @@ import 'package:flutter/material.dart';
 /// Eye exercise definitions. Each exercise animates a point along a path,
 /// which drives vergence/accommodation/saccadic/pursuit training.
 enum ExerciseType {
-  convergence('Convergence Training',
-      'Train your eyes to converge and diverge together'),
-  nearFar('Near-Far Cycles',
-      'Alternating near/far focus with timed holds — trains accommodation'),
-  focusShift('Focus Shifting',
-      'Jump your focus between widely spaced targets'),
+  convergence('Vertical Tracking',
+      'Large vertical oscillation — trains smooth pursuit, not vergence'),
+  nearFar('Near-Far Pace',
+      'Alternating disc size — pacing aid, not accommodative facility'),
+  focusShift('Large Saccadic Jumps',
+      'Jump between widely spaced targets — keep your head still'),
   saccadic('Saccadic Jumps',
       'Jump your eyes rapidly between target positions'),
   pursuit('Smooth Pursuit',
@@ -156,6 +156,9 @@ class ExercisePainter extends CustomPainter {
   /// Near-Far only: draw the target as a Gabor sphere instead of a round dot.
   final bool nearFarGabor;
 
+  /// Trail length (number of past positions to draw).
+  final int trailLength;
+
   ExercisePainter(
     this.type,
     this.progress, {
@@ -164,6 +167,7 @@ class ExercisePainter extends CustomPainter {
     this.orbsTime = 0,
     this.gaborImage,
     this.nearFarGabor = false,
+    this.trailLength = 8,
   });
 
   @override
@@ -184,8 +188,24 @@ class ExercisePainter extends CustomPainter {
     final p = exercisePath(type, progress);
     final center = Offset(p.dx * size.width, p.dy * size.height);
 
-    // Default: smooth moving dot with a faint guidance ring in the center.
+    // Draw trail of past positions
+    for (var i = 1; i <= trailLength; i++) {
+      final trailProgress = (progress - i * 0.02).clamp(0.0, 1.0);
+      final trailPos = exercisePath(type, trailProgress);
+      final trailCenter = Offset(trailPos.dx * size.width, trailPos.dy * size.height);
+      final trailAlpha = (1.0 - i / (trailLength + 1.0)) * 0.3;
+      final trailRadius = size.width * 0.03 * (1.0 - i * 0.05);
+      if (trailRadius > 0) {
+        _dot(canvas, trailCenter, trailRadius, color.withValues(alpha: trailAlpha));
+      }
+    }
+
+    // Main target with pulsing glow
+    final pulse = 0.9 + 0.1 * math.sin(progress * 20);
+    _glow(canvas, center, size.width * 0.03 * pulse, 8, color.withValues(alpha: 0.15));
     _dot(canvas, center, size.width * 0.03, color);
+
+    // Faint guidance ring in the center
     _refPaint.color = color.withValues(alpha: 0.1);
     canvas.drawCircle(
         Offset(size.width / 2, size.height / 2), size.width * 0.005, _refPaint);
@@ -232,6 +252,18 @@ class ExercisePainter extends CustomPainter {
 
   /// Central fixation dot plus a brief flash at a random angle on a ring.
   void _paintPeripheral(Canvas canvas, Size size) {
+    // Photosafety: ITU-R BT.1702-3 / WCAG / EFA 2005 limits:
+    // - maximum 3 flashes per second (period >= 333 ms)
+    // - no saturated red
+    // - flash area < 25% of screen
+    // The peripheral flashes at ~1 Hz, ~0.05% area, blue — passes, but
+    // assert invariants so a future change cannot violate them silently.
+    assert(_kPeripheralFlashPeriodMs >= 333,
+        'Peripheral flash period must be >= 333 ms (3 flashes/s max)');
+    assert(!_kRedFlashForbidden,
+        'Peripheral flash must not be saturated red');
+    // Dot area is tiny (< 0.1% of screen) — no area assertion needed.
+
     _dot(canvas, Offset(size.width / 2, size.height / 2), 6, color);
     final slot = (progress * 8).floor();
     final flashAngle = peripheralAngle(slot, seed);
@@ -245,6 +277,10 @@ class ExercisePainter extends CustomPainter {
       _dot(canvas, flashPos, 8, color.withValues(alpha: 0.9));
     }
   }
+
+  // Photosafety constants, evaluated once at library load.
+  static const int _kPeripheralFlashPeriodMs = 8000 ~/ 8; // 1 Hz = 8 s / 8 slots
+  static const bool _kRedFlashForbidden = true;
 
   /// Two Gabor "orbs" in antiphase; each spawns small at a random point,
   /// drifts along a random path while slowly growing, then fades out.

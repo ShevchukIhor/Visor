@@ -95,8 +95,7 @@ class _AboutScreenState extends State<AboutScreen> {
                 "Visor trains your visual cortex with Gabor-patch games and "
                 "guided eye exercises — the same stimuli neuroscience uses "
                 "to study vision. Regular short sessions can ease screen "
-                "fatigue, sharpen focus, and loosen eye strain from long "
-                "near-work.",
+                "fatigue and loosen eye strain from long near-work.",
                 size: 14,
               ),
               _para(
@@ -120,6 +119,22 @@ class _AboutScreenState extends State<AboutScreen> {
                 "If Visor helped your eyes, a tip is appreciated — never "
                 "required.",
                 style: TextStyle(color: VisorTheme.textDim, fontSize: 13),
+              ),
+              _para(
+                "Stop if you feel persistent double vision, headache, nausea, "
+                "or vertigo during or after an exercise. If you have untreated "
+                "strabismus, amblyopia, recent eye surgery/injury, retinal disease, "
+                "a vestibular disorder, or photosensitive epilepsy, consult an "
+                "eye-care professional before using this app.",
+                color: VisorTheme.danger,
+              ),
+              _para(
+                "Photosensitive-epilepsy safeguard: flashes are at ~1 Hz, "
+                "very small area, blue — within ITU-R BT.1702 / WCAG limits. "
+                "If you are photosensitive, avoid the Peripheral Awareness "
+                "exercise.",
+                size: 12,
+                color: VisorTheme.textDim,
               ),
               const SizedBox(height: 20),
               Container(

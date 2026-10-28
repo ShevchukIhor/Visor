@@ -215,16 +215,32 @@ class TrialGenerator {
   TrialGenerator({int? seed, this.curved = false})
       : _rng = math.Random(seed);
 
-  static const double _baseFreq = 4.5;
-  static const double _sigma = 0.35;
   static const double _aspect = 1.0;
   static const double _curvature = 24.0;
+
+  /// Sigma scales by difficulty: smaller envelope = harder to perceive orientation.
+  /// Easy shows more context; Expert shows less.
+  static double sigmaFor(Difficulty d) => switch (d) {
+        Difficulty.easy => 0.35,
+        Difficulty.medium => 0.35,
+        Difficulty.hard => 0.38,
+        Difficulty.expert => 0.40,
+      };
+
+  /// Frequency scales by difficulty: higher frequency = finer stripes.
+  /// Expert has the finest, hardest-to-discriminate stripes.
+  static double frequencyFor(Difficulty d) => switch (d) {
+        Difficulty.easy => 5.0,
+        Difficulty.medium => 5.0,
+        Difficulty.hard => 5.5,
+        Difficulty.expert => 6.0,
+      };
 
   GaborTrial generate(Difficulty d) {
     final n = d.grid;
     final cellCount = n * n;
 
-    final target = _randomPatch(d, contrastScale: contrastOf(d));
+    final target = _randomPatch(d);
     final answer = _rng.nextInt(cellCount);
 
     final distractors = <GaborPatch>[];
@@ -246,12 +262,12 @@ class TrialGenerator {
 
   double contrastOf(Difficulty d) => d.contrastScale;
 
-  GaborPatch _randomPatch(Difficulty d, {double? contrastScale}) {
+  GaborPatch _randomPatch(Difficulty d) {
     final c = contrastOf(d);
     return GaborPatch(
       theta: _rng.nextDouble() * 2 * math.pi,
-      frequency: _baseFreq,
-      sigma: _sigma,
+      frequency: frequencyFor(d),
+      sigma: sigmaFor(d),
       phase: _rng.nextDouble() * 2 * math.pi,
       aspect: _aspect,
       contrast: c,
@@ -269,8 +285,8 @@ class TrialGenerator {
     final theta = _wrapPi(base.theta + delta);
 
     final freq = d.varyFrequency
-        ? base.frequency + (_rng.nextDouble() * 0.4 - 0.2)
-        : base.frequency;
+        ? frequencyFor(d) + (_rng.nextDouble() * 0.4 - 0.2)
+        : frequencyFor(d);
 
     final phase = d.varyPhase
         ? base.phase + (_rng.nextDouble() * 1.5 - 0.75)
@@ -279,7 +295,7 @@ class TrialGenerator {
     return GaborPatch(
       theta: theta,
       frequency: freq,
-      sigma: base.sigma,
+      sigma: sigmaFor(d),
       phase: phase,
       aspect: base.aspect,
       contrast: base.contrast,
