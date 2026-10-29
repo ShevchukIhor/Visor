@@ -66,13 +66,19 @@ class _StepStatus {
   final int total;
 }
 
-class _SessionRunnerState extends State<SessionRunner> {
+class _SessionRunnerState extends State<SessionRunner>
+    with SingleTickerProviderStateMixin {
   /// The quit/skip controls' touch-target side. Bigger than the 40 dp
   /// default: a finger, not a stylus, taps these mid-drill.
   static const double _controlSize = 56;
 
   int _index = 0;
   bool _done = false;
+
+  /// Animates transitions between exercise steps: fade + slight scale.
+  late final AnimationController _stepAnim;
+  late final Animation<double> _stepFade;
+  late final Animation<double> _stepScale;
 
   /// Steps that failed to save, in case any is retried from the finish card.
   final List<_FailedStep> _failedSteps = [];
@@ -96,6 +102,19 @@ class _SessionRunnerState extends State<SessionRunner> {
   @override
   void initState() {
     super.initState();
+    // Step transition animation: fade in with slight scale-up.
+    _stepAnim = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    );
+    _stepFade = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _stepAnim, curve: Curves.easeOut),
+    );
+    _stepScale = Tween<double>(begin: 0.97, end: 1.0).animate(
+      CurvedAnimation(parent: _stepAnim, curve: Curves.easeOut),
+    );
+    // Trigger initial animation
+    _stepAnim.forward();
     // Immersive for the whole routine, owned here rather than by each step:
     // Flutter builds the incoming step's State before disposing the
     // outgoing one, so if both children set this themselves, the outgoing
@@ -115,6 +134,7 @@ class _SessionRunnerState extends State<SessionRunner> {
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     WakelockPlus.disable();
     _status.dispose();
+    _stepAnim.dispose();
     super.dispose();
   }
 
@@ -125,7 +145,10 @@ class _SessionRunnerState extends State<SessionRunner> {
     if (_index + 1 >= _steps.length) {
       setState(() => _done = true);
     } else {
+      // Reset and restart the step transition animation
+      _stepAnim.reset();
       setState(() => _index++);
+      _stepAnim.forward();
     }
   }
 
@@ -210,7 +233,13 @@ class _SessionRunnerState extends State<SessionRunner> {
           right: 0,
           top: 0,
           bottom: _controlSize + MediaQuery.of(context).padding.bottom,
-          child: _stage(step),
+          child: FadeTransition(
+            opacity: _stepFade,
+            child: ScaleTransition(
+              scale: _stepScale,
+              child: _stage(step),
+            ),
+          ),
         ),
         SafeArea(child: _progressBar(step)),
         Positioned(
@@ -513,13 +542,25 @@ class _RestCard extends StatefulWidget {
   State<_RestCard> createState() => _RestCardState();
 }
 
-class _RestCardState extends State<_RestCard> {
+class _RestCardState extends State<_RestCard>
+    with SingleTickerProviderStateMixin {
   late int _left = widget.step.seconds;
   Timer? _ticker;
+  late final AnimationController _fadeAnim;
+  late final Animation<double> _fade;
 
   @override
   void initState() {
     super.initState();
+    // Fade in the rest card
+    _fadeAnim = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _fade = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _fadeAnim, curve: Curves.easeOut),
+    );
+    _fadeAnim.forward();
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       if (_left <= 1) {
@@ -535,15 +576,18 @@ class _RestCardState extends State<_RestCard> {
   @override
   void dispose() {
     _ticker?.cancel();
+    _fadeAnim.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
+    return FadeTransition(
+      opacity: _fade,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
           Text('$_left',
               style: const TextStyle(
                   color: VisorTheme.text,
@@ -561,6 +605,7 @@ class _RestCardState extends State<_RestCard> {
                     color: VisorTheme.textDim, fontSize: 13)),
           ],
         ]),
+        ),
       ),
     );
   }

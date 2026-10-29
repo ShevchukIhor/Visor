@@ -63,6 +63,9 @@ class _GameScreenState extends State<GameScreen>
 
   /// Animates trial transitions: new patches scale in and fade in.
   late final AnimationController _trialAnim;
+  /// Animates tap feedback: quick scale pulse on tapped cell.
+  late final AnimationController _tapAnim;
+  int? _tappedIndex;
   int _correct = 0;
   int _total = 0;
   int? _selected; // tapped index (null until answered)
@@ -99,7 +102,11 @@ class _GameScreenState extends State<GameScreen>
     );
     _trialAnim = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 180),
+      duration: const Duration(milliseconds: 250),
+    );
+    _tapAnim = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 150),
     );
     _secondsLeft = widget.setup.durationS;
     _startedAt = DateTime.now();
@@ -190,11 +197,14 @@ class _GameScreenState extends State<GameScreen>
     setState(() {
       _answered = true;
       _selected = index;
+      _tappedIndex = index;
       _total++;
       if (correct) {
         _correct++;
       }
     });
+    // Quick scale pulse on tapped cell
+    _tapAnim.forward(from: 0);
     // The game is a rapid-tap drill: the thumb needs the answer the instant
     // the finger lifts, and the two strengths keep correct/wrong distinct
     // without sound.
@@ -265,6 +275,7 @@ class _GameScreenState extends State<GameScreen>
     _timer?.cancel();
     _reveal.dispose();
     _trialAnim.dispose();
+    _tapAnim.dispose();
     if (widget.onDone == null) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       // Safety net for the exit path: `_finish` already released the
@@ -357,10 +368,10 @@ class _GameScreenState extends State<GameScreen>
   }
 
   Widget _targetAndGrid() {
-    final scaleAnim = Tween<double>(begin: 0.96, end: 1.0).animate(
+    final scaleAnim = Tween<double>(begin: 0.92, end: 1.0).animate(
       CurvedAnimation(parent: _trialAnim, curve: Curves.easeOut),
     );
-    final fadeAnim = Tween<double>(begin: 0.85, end: 1.0).animate(
+    final fadeAnim = Tween<double>(begin: 0.8, end: 1.0).animate(
       CurvedAnimation(parent: _trialAnim, curve: Curves.easeOut),
     );
 
@@ -402,43 +413,57 @@ class _GameScreenState extends State<GameScreen>
 
   Widget _gridView() {
     final n = _grid;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: GridView.builder(
-        shrinkWrap: false,
-        physics: const NeverScrollableScrollPhysics(),
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: n,
-          // 8 dp keeps a fast tap from landing on a neighbour's edge — the
-          // old 6 dp gap was under the minimum touch spacing.
-          mainAxisSpacing: 8,
-          crossAxisSpacing: 8,
-        ),
-        itemCount: n * n,
-        itemBuilder: (ctx, i) {
-          final isAnswer = _answered && i == _trial.answerIndex;
-          final isPicked = _answered && i == _selected;
-          final isWrong = isPicked && i != _trial.answerIndex;
-          return GestureDetector(
-            onTap: () => _tap(i),
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: isAnswer
-                      ? VisorTheme.success
-                      : isWrong
-                          ? VisorTheme.danger
-                          : VisorTheme.surfaceAlt,
-                  width: isAnswer || isWrong ? 3 : 1,
-                ),
-              ),
-              clipBehavior: Clip.antiAlias,
-              child: GaborView(patch: _trial.distractors[i], size: 96),
+    // Tap feedback animation: quick scale pulse
+    final tapScale = Tween<double>(begin: 1.0, end: 1.05).animate(
+      CurvedAnimation(parent: _tapAnim, curve: Curves.easeOut),
+    );
+    return AnimatedBuilder(
+      animation: _tapAnim,
+      builder: (ctx, child) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: GridView.builder(
+            shrinkWrap: false,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: n,
+              // 8 dp keeps a fast tap from landing on a neighbour's edge — the
+              // old 6 dp gap was under the minimum touch spacing.
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
             ),
-          );
-        },
-      ),
+            itemCount: n * n,
+            itemBuilder: (ctx, i) {
+              final isAnswer = _answered && i == _trial.answerIndex;
+              final isPicked = _answered && i == _selected;
+              final isWrong = isPicked && i != _trial.answerIndex;
+              final isTapped = i == _tappedIndex;
+              return GestureDetector(
+                onTap: () => _tap(i),
+                child: Transform.scale(
+                  scale: isTapped ? tapScale.value : 1.0,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isAnswer
+                            ? VisorTheme.success
+                            : isWrong
+                                ? VisorTheme.danger
+                                : VisorTheme.surfaceAlt,
+                        width: isAnswer || isWrong ? 3 : 1,
+                      ),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: GaborView(patch: _trial.distractors[i], size: 96),
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
+      child: const SizedBox.shrink(),
     );
   }
 

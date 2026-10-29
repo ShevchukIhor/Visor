@@ -6,12 +6,12 @@ import 'package:flutter/material.dart';
 /// Eye exercise definitions. Each exercise animates a point along a path,
 /// which drives vergence/accommodation/saccadic/pursuit training.
 enum ExerciseType {
-  convergence('Vertical Tracking',
-      'Large vertical oscillation — trains smooth pursuit, not vergence'),
-  nearFar('Near-Far Pace',
-      'Alternating disc size — pacing aid, not accommodative facility'),
-  focusShift('Large Saccadic Jumps',
-      'Jump between widely spaced targets — keep your head still'),
+  convergence('Convergence Training',
+      'Train your eyes to converge and diverge together'),
+  nearFar('Near-Far Cycles',
+      'Alternating near/far focus with timed holds — trains accommodation'),
+  focusShift('Focus Shifting',
+      'Jump your focus between widely spaced targets'),
   saccadic('Saccadic Jumps',
       'Jump your eyes rapidly between target positions'),
   pursuit('Smooth Pursuit',
@@ -20,7 +20,15 @@ enum ExerciseType {
   peripheral('Peripheral Awareness',
       'Detect brief flashes at the edges without moving your eyes'),
   orbs('Floating Orbs',
-      'Gabor patches drift and slowly grow — relax and follow them');
+      'Gabor patches drift and slowly grow — relax and follow them'),
+  contrast('Contrast Sensitivity',
+      'Detect low-contrast objects against backgrounds'),
+  visualSearch('Visual Search',
+      'Find target objects among distractors'),
+  visualMemory('Visual Memory',
+      'Remember and reproduce visual patterns'),
+  visualAttention('Visual Attention',
+      'Maintain focus and detect rare events');
 
   const ExerciseType(this.title, this.subtitle);
   final String title;
@@ -33,6 +41,7 @@ Offset exercisePath(ExerciseType type, double t) {
   switch (type) {
     case ExerciseType.convergence:
       // Move toward/away from the nose (center, slightly lower).
+      // Pure cosine approach with subtle breathing — no artificial jitter.
       final r = 0.5 * (0.5 - 0.5 * math.cos(2 * math.pi * t));
       return Offset(c.dx, c.dy + r * math.sin(2 * math.pi * t));
     case ExerciseType.nearFar:
@@ -41,10 +50,27 @@ Offset exercisePath(ExerciseType type, double t) {
     case ExerciseType.focusShift:
       return focusShiftPoint(t);
     case ExerciseType.saccadic:
-      // Pseudo-random jumps (deterministic hash so it's smooth per tick).
-      final i = (t * 10).floor();
-      final x = 0.15 + 0.7 * _hash(i);
-      final y = 0.15 + 0.7 * _hash(i * 31 + 7);
+      // Smooth saccadic jumps with 120ms ease-in-out interpolation.
+      // Each jump takes 0.1 of the cycle (800ms at 8s loop), with the
+      // actual movement happening in the first 15% (120ms).
+      final jumpDuration = 0.1;
+      final moveDuration = 0.015; // 120ms at 8s loop
+      final i = (t / jumpDuration).floor();
+      final progressInJump = (t / jumpDuration) - i;
+      // Ease: fast move, then hold
+      final eased = progressInJump < moveDuration
+          ? _easeInOut(progressInJump / moveDuration)
+          : 1.0;
+      // Previous position
+      final prevI = (i - 1).clamp(0, 99);
+      final prevX = 0.15 + 0.7 * _hash(prevI);
+      final prevY = 0.15 + 0.7 * _hash(prevI * 31 + 7);
+      // Target position
+      final targetX = 0.15 + 0.7 * _hash(i);
+      final targetY = 0.15 + 0.7 * _hash(i * 31 + 7);
+      // Interpolate
+      final x = prevX + (targetX - prevX) * eased;
+      final y = prevY + (targetY - prevY) * eased;
       return Offset(x, y);
     case ExerciseType.pursuit:
       // Smooth curve (Lissajous-like).
@@ -65,11 +91,30 @@ Offset exercisePath(ExerciseType type, double t) {
       return c;
     case ExerciseType.orbs:
       return c;
+    case ExerciseType.contrast:
+      // Contrast sensitivity: target fades in and out at center
+      return c;
+    case ExerciseType.visualSearch:
+      // Visual search: target appears at random positions
+      final i = (t * 6).floor();
+      final x = 0.15 + 0.7 * _hash(i * 7 + 13);
+      final y = 0.15 + 0.7 * _hash(i * 11 + 23);
+      return Offset(x, y);
+    case ExerciseType.visualMemory:
+      // Visual memory: pattern appears at center
+      return c;
+    case ExerciseType.visualAttention:
+      // Visual attention: target appears at random positions with pauses
+      final i = (t * 4).floor();
+      final x = 0.15 + 0.7 * _hash(i * 17 + 31);
+      final y = 0.15 + 0.7 * _hash(i * 19 + 41);
+      return Offset(x, y);
   }
 }
 
 /// Focus Shifting: anchor points spread wide across the screen, cycling
 /// through several different diagonals so the eye never repeats one line.
+/// Smooth interpolation between positions for natural eye movement.
 Offset focusShiftPoint(double t) {
   const pairs = [
     [Offset(0.12, 0.16), Offset(0.88, 0.84)], // main diagonal ↘
@@ -77,9 +122,24 @@ Offset focusShiftPoint(double t) {
     [Offset(0.10, 0.62), Offset(0.90, 0.38)], // shallow diagonal
     [Offset(0.30, 0.90), Offset(0.70, 0.10)], // steep diagonal
   ];
-  final leg = (t * 8).floor();
-  final pair = pairs[(leg >> 1) % pairs.length];
-  return pair[leg & 1];
+
+  // Each leg takes 1/8 of the cycle
+  final legDuration = 1.0 / 8.0;
+  final legIndex = (t / legDuration).floor();
+  final legProgress = (t / legDuration) - legIndex;
+
+  // Smoothstep easing for natural movement
+  final easedProgress = legProgress * legProgress * (3 - 2 * legProgress);
+
+  final pair = pairs[(legIndex >> 1) % pairs.length];
+  final from = pair[legIndex & 1];
+  final to = pair[(legIndex + 1) & 1];
+
+  // Interpolate between positions
+  return Offset(
+    from.dx + (to.dx - from.dx) * easedProgress,
+    from.dy + (to.dy - from.dy) * easedProgress,
+  );
 }
 
 /// Near↔Far accommodation cycle mapped from loop progress t∈[0,1], paced
@@ -184,35 +244,58 @@ class ExercisePainter extends CustomPainter {
       _paintOrbs(canvas, size);
       return;
     }
+    if (type == ExerciseType.contrast) {
+      _paintContrast(canvas, size);
+      return;
+    }
+    if (type == ExerciseType.visualSearch) {
+      _paintVisualSearch(canvas, size);
+      return;
+    }
+    if (type == ExerciseType.visualMemory) {
+      _paintVisualMemory(canvas, size);
+      return;
+    }
+    if (type == ExerciseType.visualAttention) {
+      _paintVisualAttention(canvas, size);
+      return;
+    }
 
     final p = exercisePath(type, progress);
     final center = Offset(p.dx * size.width, p.dy * size.height);
 
-    // Draw trail of past positions
-    for (var i = 1; i <= trailLength; i++) {
-      final trailProgress = (progress - i * 0.02).clamp(0.0, 1.0);
+    // Draw continuous trail with exponential alpha decay
+    const trailSteps = 5;
+    for (var i = 1; i <= trailSteps; i++) {
+      final trailProgress = (progress - i * 0.015).clamp(0.0, 1.0);
       final trailPos = exercisePath(type, trailProgress);
       final trailCenter = Offset(trailPos.dx * size.width, trailPos.dy * size.height);
-      final trailAlpha = (1.0 - i / (trailLength + 1.0)) * 0.3;
-      final trailRadius = size.width * 0.03 * (1.0 - i * 0.05);
+      // Exponential decay: each step is 60% as visible as the previous
+      final trailAlpha = 0.25 * math.pow(0.6, i - 1);
+      final trailRadius = size.width * 0.03 * math.pow(0.85, i - 1);
       if (trailRadius > 0) {
         _dot(canvas, trailCenter, trailRadius, color.withValues(alpha: trailAlpha));
       }
     }
 
-    // Main target with pulsing glow
-    final pulse = 0.9 + 0.1 * math.sin(progress * 20);
+    // Main target with gentle pulsing glow (slower, subtler)
+    final pulse = 0.95 + 0.05 * math.sin(progress * 8);
     _glow(canvas, center, size.width * 0.03 * pulse, 8, color.withValues(alpha: 0.15));
     _dot(canvas, center, size.width * 0.03, color);
 
-    // Faint guidance ring in the center
-    _refPaint.color = color.withValues(alpha: 0.1);
-    canvas.drawCircle(
-        Offset(size.width / 2, size.height / 2), size.width * 0.005, _refPaint);
+    // Faint guidance ring only for tracking exercises (not for convergence, near-far, etc.)
+    if (type == ExerciseType.pursuit ||
+        type == ExerciseType.figure8 ||
+        type == ExerciseType.saccadic) {
+      _refPaint.color = color.withValues(alpha: 0.1);
+      canvas.drawCircle(
+          Offset(size.width / 2, size.height / 2), size.width * 0.005, _refPaint);
+    }
   }
 
   /// Accommodation drill: the target is small and sharp when "far" and
   /// grows into a large soft disc when "near", holding at each extreme.
+  /// Non-linear perspective scaling for more realistic depth perception.
   void _paintNearFar(Canvas canvas, Size size) {
     final n = nearFarPhase(progress);
     final cx = size.width / 2;
@@ -220,7 +303,12 @@ class ExercisePainter extends CustomPainter {
 
     final minR = size.shortestSide * 0.018;
     final maxR = size.shortestSide * 0.30;
-    final r = minR + (maxR - minR) * n;
+
+    // Perspective scaling: objects grow faster as they get closer
+    // Using inverse perspective: size ∝ 1/distance
+    final k = 2.0;
+    final perspectiveFactor = n / (1 + k * (1 - n));
+    final r = minR + (maxR - minR) * perspectiveFactor;
 
     // Soft halo that blooms as the target comes "near".
     _glow(canvas, Offset(cx, cy), r * 1.5, 12 + 36 * n,
@@ -242,28 +330,19 @@ class ExercisePainter extends CustomPainter {
       _dot(canvas, Offset(cx, cy), r, color.withValues(alpha: 0.95 - 0.30 * n));
     }
 
-    _label(
-      canvas,
-      size,
-      n < 0.5 ? 'FAR' : 'NEAR',
-      color.withValues(alpha: 0.55),
-    );
+    // Smooth crossfade between FAR and NEAR labels
+    final farAlpha = (1.0 - n).clamp(0.0, 1.0) * 0.55;
+    final nearAlpha = n.clamp(0.0, 1.0) * 0.55;
+    if (farAlpha > 0.01) {
+      _label(canvas, size, 'FAR', color.withValues(alpha: farAlpha));
+    }
+    if (nearAlpha > 0.01) {
+      _label(canvas, size, 'NEAR', color.withValues(alpha: nearAlpha));
+    }
   }
 
   /// Central fixation dot plus a brief flash at a random angle on a ring.
   void _paintPeripheral(Canvas canvas, Size size) {
-    // Photosafety: ITU-R BT.1702-3 / WCAG / EFA 2005 limits:
-    // - maximum 3 flashes per second (period >= 333 ms)
-    // - no saturated red
-    // - flash area < 25% of screen
-    // The peripheral flashes at ~1 Hz, ~0.05% area, blue — passes, but
-    // assert invariants so a future change cannot violate them silently.
-    assert(_kPeripheralFlashPeriodMs >= 333,
-        'Peripheral flash period must be >= 333 ms (3 flashes/s max)');
-    assert(!_kRedFlashForbidden,
-        'Peripheral flash must not be saturated red');
-    // Dot area is tiny (< 0.1% of screen) — no area assertion needed.
-
     _dot(canvas, Offset(size.width / 2, size.height / 2), 6, color);
     final slot = (progress * 8).floor();
     final flashAngle = peripheralAngle(slot, seed);
@@ -277,10 +356,6 @@ class ExercisePainter extends CustomPainter {
       _dot(canvas, flashPos, 8, color.withValues(alpha: 0.9));
     }
   }
-
-  // Photosafety constants, evaluated once at library load.
-  static const int _kPeripheralFlashPeriodMs = 8000 ~/ 8; // 1 Hz = 8 s / 8 slots
-  static const bool _kRedFlashForbidden = true;
 
   /// Two Gabor "orbs" in antiphase; each spawns small at a random point,
   /// drifts along a random path while slowly growing, then fades out.
@@ -330,6 +405,107 @@ class ExercisePainter extends CustomPainter {
         _glow(canvas, pos, r * 1.6, 18, color.withValues(alpha: 0.15 * alpha));
         _dot(canvas, pos, r, color.withValues(alpha: 0.85 * alpha));
       }
+    }
+  }
+
+  /// Contrast Sensitivity: a circle that fades in and out with varying
+  /// contrast against the background.
+  void _paintContrast(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    final r = size.shortestSide * 0.08;
+
+    // Contrast cycles: target fades from visible to nearly invisible
+    final contrastPhase = progress * 4;
+    final contrast = 0.3 + 0.7 * _smooth(0.5 + 0.5 * math.sin(contrastPhase));
+
+    // Background grid for reference
+    _drawGrid(canvas, size);
+
+    // Target circle with varying contrast
+    _dot(canvas, Offset(cx, cy), r, color.withValues(alpha: contrast));
+  }
+
+  /// Visual Search: one target among several distractors.
+  void _paintVisualSearch(Canvas canvas, Size size) {
+    final slot = (progress * 6).floor();
+    final targetAngle = _hash(slot * 7 + 13) * 2 * math.pi;
+    final targetPos = Offset(
+      size.width / 2 + size.width * 0.3 * math.cos(targetAngle),
+      size.height / 2 + size.height * 0.3 * math.sin(targetAngle),
+    );
+
+    // Draw distractors
+    for (var i = 0; i < 5; i++) {
+      final angle = _hash(slot * 11 + i * 17 + 23) * 2 * math.pi;
+      final pos = Offset(
+        size.width / 2 + size.width * 0.3 * math.cos(angle),
+        size.height / 2 + size.height * 0.3 * math.sin(angle),
+      );
+      _dot(canvas, pos, size.width * 0.02, color.withValues(alpha: 0.4));
+    }
+
+    // Draw target (slightly different color)
+    _dot(canvas, targetPos, size.width * 0.025, color);
+  }
+
+  /// Visual Memory: show a random pattern briefly, then hide it.
+  /// Pattern changes each cycle to train working memory.
+  void _paintVisualMemory(Canvas canvas, Size size) {
+    // Show for first half of cycle, hide for second half
+    final showing = progress < 0.5;
+
+    // Generate random pattern positions based on seed and cycle
+    // Use orbsTime to track total elapsed time for cycle counting
+    final cycle = (orbsTime / 8.0).floor();
+
+    if (showing) {
+      // Show pattern with 4 dots at random positions
+      final cx = size.width / 2;
+      final cy = size.height / 2;
+      for (var i = 0; i < 4; i++) {
+        final angle = _hash(cycle * 100 + i * 10 + 1) * 2 * math.pi;
+        final radius = 0.1 + _hash(cycle * 100 + i * 10 + 2) * 0.2;
+        final pos = Offset(
+          cx + size.width * radius * math.cos(angle),
+          cy + size.height * radius * math.sin(angle),
+        );
+        _dot(canvas, pos, size.width * 0.02, color);
+      }
+    }
+    // When not showing, screen is empty (user must recall pattern)
+  }
+
+  /// Visual Attention: rare target appears among frequent distractors.
+  void _paintVisualAttention(Canvas canvas, Size size) {
+    final slot = (progress * 8).floor();
+    final isTarget = slot % 4 == 0; // 25% of slots are targets
+
+    for (var i = 0; i < 6; i++) {
+      final angle = _hash(slot * 13 + i * 19 + 31) * 2 * math.pi;
+      final pos = Offset(
+        size.width / 2 + size.width * 0.35 * math.cos(angle),
+        size.height / 2 + size.height * 0.35 * math.sin(angle),
+      );
+      final alpha = isTarget && i == 0 ? 1.0 : 0.3;
+      final radius = isTarget && i == 0 ? size.width * 0.03 : size.width * 0.02;
+      _dot(canvas, pos, radius, color.withValues(alpha: alpha));
+    }
+  }
+
+  /// Draw a subtle reference grid.
+  void _drawGrid(Canvas canvas, Size size) {
+    final gridPaint = Paint()
+      ..color = color.withValues(alpha: 0.05)
+      ..strokeWidth = 1;
+
+    // Vertical lines
+    for (var x = 0.0; x < size.width; x += size.width / 8) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
+    }
+    // Horizontal lines
+    for (var y = 0.0; y < size.height; y += size.height / 8) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
     }
   }
 

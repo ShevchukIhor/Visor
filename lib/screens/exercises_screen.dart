@@ -25,26 +25,35 @@ extension ExerciseIcon on ExerciseType {
         ExerciseType.figure8 => Icons.loop,
         ExerciseType.peripheral => Icons.blur_on,
         ExerciseType.orbs => Icons.bubble_chart,
+        ExerciseType.contrast => Icons.opacity,
+        ExerciseType.visualSearch => Icons.search,
+        ExerciseType.visualMemory => Icons.memory,
+        ExerciseType.visualAttention => Icons.visibility,
       };
 
   /// One-line guidance shown while the exercise runs.
   String get hint => switch (this) {
         ExerciseType.convergence =>
-          'Vertical pursuit — keep your head still, follow with eyes only',
+          'Follow the dot toward the centre and back',
         ExerciseType.nearFar =>
-          'Pacing: dot grows/shrinks — do not change viewing distance',
+          'Shift focus: small sharp dot is FAR, large soft disc is NEAR',
         ExerciseType.focusShift =>
-          'Large saccades — keep your head still, jump with eyes only',
-        ExerciseType.saccadic =>
-          'Flick your eyes to each new position — keep head still',
-        ExerciseType.pursuit =>
-          'Keep the dot locked in your gaze — keep head still',
-        ExerciseType.figure8 =>
-          'Trace the loop smoothly — keep head still',
+          'Jump your gaze between the far-apart targets',
+        ExerciseType.saccadic => 'Flick your eyes to each new position',
+        ExerciseType.pursuit => 'Keep the dot locked in your gaze as it glides',
+        ExerciseType.figure8 => 'Trace the loop smoothly with your eyes',
         ExerciseType.peripheral =>
           'Fixate on the centre dot; catch the flashes at the edges',
         ExerciseType.orbs =>
           'Relax and let your focus drift with the growing patches',
+        ExerciseType.contrast =>
+          'Detect the fading circle as it appears and disappears',
+        ExerciseType.visualSearch =>
+          'Find the bright dot among the dimmer distractors',
+        ExerciseType.visualMemory =>
+          'Memorize the pattern when it appears, then recall it',
+        ExerciseType.visualAttention =>
+          'Watch for the rare bright dot among frequent dim dots',
       };
 }
 
@@ -76,6 +85,8 @@ class ExercisesScreen extends StatelessWidget {
                 context,
                 MaterialPageRoute(builder: (_) => ExerciseRunner(type: e)),
               ),
+              splashColor: VisorTheme.primary.withValues(alpha: 0.1),
+              highlightColor: VisorTheme.primary.withValues(alpha: 0.05),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Row(
@@ -483,12 +494,6 @@ class _ExerciseRunnerState extends State<ExerciseRunner>
                   orbsTime: _clock.elapsedMilliseconds / 1000.0,
                   gaborImage: _gaborImage,
                   nearFarGabor: _nearFarGabor,
-                  // Ghost trail creates a second faint target that invites
-                  // corrective saccades — disable for true saccade tasks.
-                  trailLength: (widget.type == ExerciseType.saccadic ||
-                          widget.type == ExerciseType.focusShift)
-                      ? 0
-                      : 8,
                 ),
               ),
             ),
