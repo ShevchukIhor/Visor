@@ -32,6 +32,10 @@ extension ExerciseLoadOf on ExerciseType {
         ExerciseType.figure8 => ExerciseLoad.pursuit,
         ExerciseType.peripheral => ExerciseLoad.peripheral,
         ExerciseType.orbs => ExerciseLoad.relax,
+        ExerciseType.contrast => ExerciseLoad.accommodation,
+        ExerciseType.visualSearch => ExerciseLoad.saccadic,
+        ExerciseType.visualMemory => ExerciseLoad.relax,
+        ExerciseType.visualAttention => ExerciseLoad.peripheral,
       };
 }
 

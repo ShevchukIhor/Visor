@@ -15,7 +15,7 @@ void main() {
     test('an exercise resolves params.type to its human title', () {
       expect(
         taskDisplayName(exercise('{"type":"convergence"}')),
-        'Vertical Tracking',
+        'Convergence Training',
       );
     });
 

@@ -410,12 +410,12 @@ void main() {
 
     // Both the plain and the Gabor variants are offered.
     expect(find.text(ExerciseType.nearFar.title), findsOneWidget);
-    expect(find.text('Near-Far Pace · Gabor sphere'), findsOneWidget);
+    expect(find.text('Near-Far Cycles · Gabor sphere'), findsOneWidget);
 
     // Tapping the Gabor variant adds a step whose tile names it.
-    await tester.tap(find.text('Near-Far Pace · Gabor sphere'));
+    await tester.tap(find.text('Near-Far Cycles · Gabor sphere'));
     await tester.pumpAndSettle();
-    expect(find.text('Near-Far Pace · Gabor sphere'), findsOneWidget);
+    expect(find.text('Near-Far Cycles · Gabor sphere'), findsOneWidget);
 
     // Save and read back: the step must carry gaborTarget: true.
     await tester.runAsync(() async {

@@ -24,7 +24,7 @@ void main() {
     test('a Gabor Near-Far step names the Gabor sphere', () {
       final s = ExerciseStep(
           type: ExerciseType.nearFar, seconds: 60, gaborTarget: true);
-      expect(s.title, 'Near-Far Pace · Gabor sphere');
+      expect(s.title, 'Near-Far Cycles · Gabor sphere');
     });
 
     test('gaborTarget on another exercise leaves its title unchanged', () {
